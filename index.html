@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Face Recognition Attendance</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    #config-container { margin-bottom: 20px; padding: 10px; border: 1px solid #ccc; border-radius: 8px; }
+    label { display: block; margin: 5px 0; }
+    input[type="text"] { width: 100%; padding: 6px; margin-bottom: 10px; }
+    button { padding: 6px 12px; margin-right: 8px; }
+  </style>
+</head>
+<body>
+  <h1>ระบบเช็คชื่อด้วยการสแกนใบหน้า</h1>
+
+  <!-- Config Form -->
+  <div id="config-container">
+    <h3>ตั้งค่า Config</h3>
+    <label for="webAppUrl">Google Apps Script Web App URL:</label>
+    <input type="text" id="webAppUrl" placeholder="กรอก URL ของ Web App">
+    <button onclick="saveConfig()">บันทึก</button>
+    <button onclick="resetConfig()">รีเซ็ตค่า</button>
+  </div>
+
+  <div id="main-app" style="display:none;">
+    <h2>📋 เมนูหลัก</h2>
+    <button onclick="loadStudents()">📖 จัดการนักเรียน</button>
+    <button onclick="loadReport()">📊 รายงานสถิติ</button>
+    <div id="output"></div>
+  </div>
+
+  <script>
+    // โหลดค่า config จาก LocalStorage
+    let CONFIG = {
+      WEB_APP_URL: localStorage.getItem("WEB_APP_URL") || ""
+    };
+
+    // ถ้ามีค่าแล้ว แสดง App เลย
+    window.onload = () => {
+      if (CONFIG.WEB_APP_URL) {
+        document.getElementById("webAppUrl").value = CONFIG.WEB_APP_URL;
+        document.getElementById("main-app").style.display = "block";
+      }
+    };
+
+    // ฟังก์ชันบันทึกค่า config
+    function saveConfig() {
+      const url = document.getElementById("webAppUrl").value.trim();
+      if (!url) {
+        alert("กรุณากรอก URL ก่อน!");
+        return;
+      }
+      localStorage.setItem("WEB_APP_URL", url);
+      CONFIG.WEB_APP_URL = url;
+      document.getElementById("main-app").style.display = "block";
+      alert("บันทึก Config เรียบร้อย ✅");
+    }
+
+    // ฟังก์ชันรีเซ็ตค่า config
+    function resetConfig() {
+      if (confirm("คุณแน่ใจหรือไม่ที่จะรีเซ็ตค่า Config?")) {
+        localStorage.removeItem("WEB_APP_URL");
+        CONFIG.WEB_APP_URL = "";
+        document.getElementById("webAppUrl").value = "";
+        document.getElementById("main-app").style.display = "none";
+        alert("รีเซ็ตค่าเรียบร้อย ❌ กรุณากรอก URL ใหม่");
+      }
+    }
+
+    // ตัวอย่างการดึงนักเรียนจาก Apps Script
+    async function loadStudents() {
+      try {
+        const res = await fetch(`${CONFIG.WEB_APP_URL}?action=getStudents`);
+        const data = await res.json();
+        document.getElementById("output").innerHTML =
+          "<h3>รายชื่อนักเรียน</h3><pre>" + JSON.stringify(data, null, 2) + "</pre>";
+      } catch (err) {
+        alert("❌ โหลดข้อมูลนักเรียนไม่สำเร็จ: " + err);
+      }
+    }
+
+    // ตัวอย่างการดึงรายงานสถิติ
+    async function loadReport() {
+      try {
+        const res = await fetch(`${CONFIG.WEB_APP_URL}?action=getAttendanceReport`);
+        const data = await res.json();
+        document.getElementById("output").innerHTML =
+          "<h3>รายงานสถิติ</h3><pre>" + JSON.stringify(data, null, 2) + "</pre>";
+      } catch (err) {
+        alert("❌ โหลดรายงานไม่สำเร็จ: " + err);
+      }
+    }
+  </script>
+</body>
+</html>

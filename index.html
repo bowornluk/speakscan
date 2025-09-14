@@ -221,7 +221,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const card = document.createElement('div');
             card.className = "bg-gray-50 rounded-lg p-4 text-center shadow transition hover:shadow-lg";
-            // **FIX:** Use student.imageData for the image source
             card.innerHTML = `
                 <img src="${student.imageData || 'https://placehold.co/150x150/e2e8f0/475569?text=No+Image'}" class="w-32 h-32 rounded-full object-cover mx-auto mb-4 border-4 border-white shadow-md">
                 <h3 class="font-bold text-lg">${student.name}</h3>
@@ -256,7 +255,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const [studentsResult, attendanceResult] = await Promise.all([studentsPromise, attendancePromise]);
 
         if (studentsResult) {
-            // **FIX:** Expect 5 columns now, including imageData
             studentsData = studentsResult.map(row => ({ id: row[0], name: row[1], class: row[2], faceEncoding: row[3], imageData: row[4] }));
             const labeledFaceDescriptors = studentsData.map(student => {
                 if (!student.faceEncoding || !student.faceEncoding.startsWith('[')) return null;
@@ -357,7 +355,7 @@ document.addEventListener('DOMContentLoaded', () => {
             name: document.getElementById('student-name').value,
             class: document.getElementById('student-class').value,
             faceEncoding: null,
-            imageData: null // To store thumbnail
+            imageData: null
         };
         
         if (imageFile) {
@@ -367,15 +365,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!detection) throw new Error('ไม่พบใบหน้าในรูปภาพ!');
                 student.faceEncoding = JSON.stringify(Array.from(detection.descriptor));
 
-                // **NEW:** Create a thumbnail for display
                 const canvasThumb = document.createElement('canvas');
                 const ctx = canvasThumb.getContext('2d');
-                const MAX_WIDTH = 200; // Small thumbnail size
+                const MAX_WIDTH = 200;
                 const scale = MAX_WIDTH / image.width;
                 canvasThumb.width = MAX_WIDTH;
                 canvasThumb.height = image.height * scale;
                 ctx.drawImage(image, 0, 0, canvasThumb.width, canvasThumb.height);
-                student.imageData = canvasThumb.toDataURL('image/jpeg', 0.8); // Compress as JPEG
+                student.imageData = canvasThumb.toDataURL('image/jpeg', 0.8);
 
             } catch(error) {
                 hideLoading();
@@ -401,7 +398,6 @@ document.addEventListener('DOMContentLoaded', () => {
         tableBody.innerHTML = '<tr><td colspan="4" class="text-center p-4">กำลังโหลด...</td></tr>';
         const data = await callGoogleScript('getStudents');
         if (data) {
-            // Data now has 5 columns, but we only need 3 for this table
             const tableStudents = data.map(row => ({ id: row[0], name: row[1], class: row[2] }));
             tableBody.innerHTML = '';
             tableStudents.forEach((student, index) => {

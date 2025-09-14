@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ระบบเช็คชื่อด้วยใบหน้า V3.3 (แก้ไขสมบูรณ์)</title>
+    <title>ระบบเช็คชื่อด้วยใบหน้า V3.4 (ปรับปรุงการเลือกกล้อง)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
@@ -14,7 +14,6 @@
         @keyframes spin { to { transform: rotate(360deg); } }
         #video-container { position: relative; }
         #video, #canvas { position: absolute; top: 0; left: 0; }
-        /* Default to mirrored for front camera */
         #video.mirrored, #canvas.mirrored { transform: scaleX(-1); }
         #camera-placeholder svg, #dashboard-placeholder svg { width: 80px; height: 80px; color: #9ca3af; }
         .tab-btn { transition: all 0.2s ease-in-out; }
@@ -60,12 +59,19 @@
                         <video id="video" width="720" height="560" autoplay muted playsinline class="hidden mirrored"></video>
                         <canvas id="canvas" class="mirrored"></canvas>
                     </div>
+                    
+                    <!-- **NEW:** Camera Selection Dropdown -->
+                    <div class="max-w-xs mx-auto mb-4">
+                        <label for="camera-select" class="block text-sm font-medium text-gray-700 mb-1 text-center">เลือกกล้อง:</label>
+                        <select id="camera-select" class="w-full border rounded-md p-2 bg-white disabled:bg-gray-200" disabled>
+                            <option>กำลังโหลดรายการกล้อง...</option>
+                        </select>
+                    </div>
+
                     <div class="flex justify-center items-center gap-4 mb-4">
                         <button id="toggle-scan-btn" class="bg-blue-600 text-white px-8 py-3 rounded-full hover:bg-blue-700 text-lg font-semibold disabled:bg-gray-400 disabled:cursor-not-allowed">เริ่มสแกน</button>
-                        <button id="switch-camera-btn" class="bg-gray-500 text-white p-3 rounded-full hover:bg-gray-600 hidden" title="สลับกล้อง">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6"><path d="M11 19H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h5"/><path d="M13 5H20a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2h-5"/><path d="m18 15-4-4 4-4"/><path d="m6 9 4 4-4 4"/></svg>
-                        </button>
                     </div>
+
                     <div id="scan-log" class="mt-4 p-4 bg-gray-50 rounded-lg h-48 overflow-y-auto border"><p class="text-gray-500">ผลการสแกนจะแสดงที่นี่...</p></div>
                 </div>
             </div>
@@ -114,7 +120,6 @@ document.addEventListener('DOMContentLoaded', () => {
     let isCameraActive = false;
     let speechSynthesisInitialized = false;
     let videoDevices = [];
-    let currentCameraIndex = 0;
     
     // --- DOM ELEMENTS ---
     const appContainer = document.getElementById('app-container');
@@ -123,7 +128,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const video = document.getElementById('video');
     const canvas = document.getElementById('canvas');
     const toggleScanBtn = document.getElementById('toggle-scan-btn');
-    const switchCameraBtn = document.getElementById('switch-camera-btn');
+    const cameraSelect = document.getElementById('camera-select');
     const scanView = document.getElementById('scan-view');
     const dashboardView = document.getElementById('dashboard-view');
     const tabScan = document.getElementById('tab-scan');
@@ -225,31 +230,46 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- SCANNING & CAMERA LOGIC ---
     async function getCameraDevices() {
-        if (!navigator.mediaDevices?.enumerateDevices) return;
+        cameraSelect.innerHTML = '<option>กำลังค้นหากล้อง...</option>';
+        cameraSelect.disabled = true;
+        if (!navigator.mediaDevices?.enumerateDevices) {
+            cameraSelect.innerHTML = '<option>ไม่รองรับการเลือกกล้อง</option>';
+            return;
+        };
         try {
+            // Ask for permission first to get camera labels
+            await navigator.mediaDevices.getUserMedia({ video: true });
             const devices = await navigator.mediaDevices.enumerateDevices();
             videoDevices = devices.filter(device => device.kind === 'videoinput');
-        } catch (err) { console.error("Error enumerating devices:", err); }
-    }
-
-    switchCameraBtn.addEventListener('click', () => {
-        if (videoDevices.length > 1) {
-            currentCameraIndex = (currentCameraIndex + 1) % videoDevices.length;
-            startVideo(); 
+            cameraSelect.innerHTML = '';
+            if (videoDevices.length === 0) {
+                cameraSelect.innerHTML = '<option>ไม่พบกล้อง</option>';
+                return;
+            }
+            videoDevices.forEach((device, index) => {
+                const option = document.createElement('option');
+                option.value = device.deviceId;
+                option.text = device.label || `Camera ${index + 1}`;
+                cameraSelect.appendChild(option);
+            });
+            cameraSelect.disabled = false;
+        } catch (err) {
+            console.error("Error enumerating devices:", err);
+            cameraSelect.innerHTML = '<option>ไม่สามารถเข้าถึงกล้อง</option>';
+            Swal.fire('ข้อผิดพลาด', 'กรุณาอนุญาตให้เว็บเข้าถึงกล้องก่อน', 'error');
         }
-    });
+    }
 
     toggleScanBtn.addEventListener('click', () => { if (isCameraActive) stopScanning(); else startScanning(); });
     
     function startScanning() { 
         initSpeechSynthesis();
-        // **FIX:** Clear the checked-in list every time scanning starts
         checkedInToday.clear();
         isCameraActive = true; 
         toggleScanBtn.innerText = 'หยุดสแกน'; 
         toggleScanBtn.classList.remove('bg-blue-600'); 
         toggleScanBtn.classList.add('bg-red-600'); 
-        if (videoDevices.length > 1) switchCameraBtn.classList.remove('hidden');
+        cameraSelect.disabled = true;
         document.getElementById('camera-placeholder').classList.add('hidden'); 
         video.classList.remove('hidden'); 
         startVideo(); 
@@ -265,7 +285,7 @@ document.addEventListener('DOMContentLoaded', () => {
         toggleScanBtn.innerText = 'เริ่มสแกน'; 
         toggleScanBtn.classList.add('bg-blue-600'); 
         toggleScanBtn.classList.remove('bg-red-600');
-        switchCameraBtn.classList.add('hidden');
+        cameraSelect.disabled = false;
         document.getElementById('status-indicator').classList.add('hidden'); 
         document.getElementById('video').classList.add('hidden'); 
         document.getElementById('camera-placeholder').classList.remove('hidden'); 
@@ -274,11 +294,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const startVideo = () => {
         if (video.srcObject) { video.srcObject.getTracks().forEach(track => track.stop()); }
         
-        const currentDevice = videoDevices[currentCameraIndex];
-        const constraints = { video: { deviceId: currentDevice ? { exact: currentDevice.deviceId } : undefined } };
+        const selectedDeviceId = cameraSelect.value;
+        if (!selectedDeviceId) {
+            Swal.fire('ข้อผิดพลาด', 'กรุณาเลือกกล้องก่อน', 'error');
+            stopScanning();
+            return;
+        }
         
-        // **FIX:** Adjust video mirroring based on camera direction
-        const isRearCamera = currentDevice?.label.toLowerCase().includes('back');
+        const constraints = { video: { deviceId: { exact: selectedDeviceId } } };
+        
+        const selectedDevice = videoDevices.find(d => d.deviceId === selectedDeviceId);
+        const isRearCamera = selectedDevice?.label.toLowerCase().includes('back');
         if (isRearCamera) {
             video.classList.remove('mirrored');
             canvas.classList.remove('mirrored');

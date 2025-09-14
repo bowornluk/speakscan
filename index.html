@@ -6,7 +6,6 @@
     <title>ระบบเช็คชื่อด้วยการสแกนใบหน้า</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
@@ -28,12 +27,13 @@
             position: absolute;
             top: 0;
             left: 0;
+            transform: scaleX(-1); /* Mirror view */
         }
     </style>
 </head>
 <body class="bg-gray-100 text-gray-800">
 
-    <!-- Modal for Config -->
+    <!-- Config Modal -->
     <div id="config-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50 hidden">
         <div class="bg-white p-8 rounded-lg shadow-xl w-full max-w-md">
             <h2 class="text-2xl font-bold mb-4">ตั้งค่า Google Web App URL</h2>
@@ -49,94 +49,58 @@
             <div class="flex justify-between items-center">
                 <div>
                     <h1 class="text-3xl font-bold text-blue-600">ระบบเช็คชื่อด้วยการสแกนใบหน้า</h1>
-                    <p class="text-gray-500">จัดการข้อมูลและดูสถิติการเข้าเรียน</p>
+                    <p class="text-gray-500">เวอร์ชัน: Face Encoding & Text-to-Speech</p>
                 </div>
-                <button id="reset-config-btn" class="bg-yellow-500 text-white px-4 py-2 rounded-md hover:bg-yellow-600 text-sm">Reset URL</button>
+                <div class="flex items-center space-x-4">
+                     <button id="manage-data-btn" class="bg-green-500 text-white px-4 py-2 rounded-md hover:bg-green-600">จัดการข้อมูลนักเรียน</button>
+                     <button id="reset-config-btn" class="bg-yellow-500 text-white px-4 py-2 rounded-md hover:bg-yellow-600 text-sm">Reset URL</button>
+                </div>
             </div>
         </header>
 
-        <!-- Navigation -->
-        <nav class="bg-white shadow-md rounded-lg p-4 mb-8 flex space-x-2 md:space-x-4">
-            <button data-view="scan" class="nav-btn flex-1 text-center py-3 px-4 rounded-md bg-blue-500 text-white font-semibold">เริ่มเช็คชื่อ</button>
-            <button data-view="manage" class="nav-btn flex-1 text-center py-3 px-4 rounded-md bg-gray-200 text-gray-700 font-semibold">จัดการข้อมูลนักเรียน</button>
-            <button data-view="dashboard" class="nav-btn flex-1 text-center py-3 px-4 rounded-md bg-gray-200 text-gray-700 font-semibold">แดชบอร์ดและสถิติ</button>
-        </nav>
-
         <!-- Main Content -->
-        <main id="main-content">
-            <!-- Scan View -->
-            <div id="scan-view" class="view-content">
-                <div class="bg-white p-6 rounded-lg shadow-md">
-                    <h2 class="text-2xl font-bold mb-4">สแกนใบหน้าเพื่อเช็คชื่อ</h2>
-                    <div id="video-container" class="w-full max-w-2xl mx-auto aspect-video bg-gray-900 rounded-lg overflow-hidden mb-4">
-                        <video id="video" width="720" height="560" autoplay muted></video>
-                        <canvas id="canvas"></canvas>
-                    </div>
-                     <div id="scan-log" class="mt-4 p-4 bg-gray-50 rounded-lg h-40 overflow-y-auto">
-                        <p class="text-gray-500">ผลการสแกนจะแสดงที่นี่...</p>
-                    </div>
+        <main>
+            <div class="bg-white p-6 rounded-lg shadow-md">
+                <h2 class="text-2xl font-bold mb-4">สแกนใบหน้าเพื่อเช็คชื่อ</h2>
+                <div id="video-container" class="w-full max-w-2xl mx-auto aspect-video bg-gray-900 rounded-lg overflow-hidden mb-4 shadow-inner">
+                    <video id="video" width="720" height="560" autoplay muted></video>
+                    <canvas id="canvas"></canvas>
                 </div>
-            </div>
-
-            <!-- Manage View -->
-            <div id="manage-view" class="view-content hidden">
-                 <div class="bg-white p-6 rounded-lg shadow-md">
-                    <div class="flex justify-between items-center mb-4">
-                        <h2 class="text-2xl font-bold">รายชื่อนักเรียน</h2>
-                        <button id="add-student-btn" class="bg-green-500 text-white px-6 py-2 rounded-md hover:bg-green-600">เพิ่มนักเรียน</button>
-                    </div>
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-left">
-                            <thead class="bg-gray-100">
-                                <tr>
-                                    <th class="p-3">รหัสนักเรียน</th>
-                                    <th class="p-3">ชื่อ-สกุล</th>
-                                    <th class="p-3">ชั้น</th>
-                                    <th class="p-3">จัดการ</th>
-                                </tr>
-                            </thead>
-                            <tbody id="student-table-body">
-                                <!-- Data will be populated here -->
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Dashboard View -->
-            <div id="dashboard-view" class="view-content hidden">
-                <div class="bg-white p-6 rounded-lg shadow-md">
-                     <h2 class="text-2xl font-bold mb-4">สถิติการเข้าเรียน</h2>
-                     <div class="flex items-center space-x-4 mb-6">
-                        <label for="report-date" class="font-semibold">เลือกวันที่:</label>
-                        <input type="date" id="report-date" class="p-2 border rounded-md">
-                     </div>
-                     <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-                         <div>
-                             <h3 class="text-xl font-semibold mb-2 text-center">สรุปการเข้าเรียนรายวัน</h3>
-                             <canvas id="daily-chart"></canvas>
-                         </div>
-                         <div>
-                             <h3 class="text-xl font-semibold mb-2">รายชื่อนักเรียน</h3>
-                             <div class="grid grid-cols-3 gap-4 font-semibold text-center mb-2">
-                                 <div class="text-green-600">มาเรียน</div>
-                                 <div class="text-orange-500">มาสาย</div>
-                                 <div class="text-red-600">ขาดเรียน</div>
-                             </div>
-                             <div class="grid grid-cols-3 gap-4 h-96 overflow-y-auto">
-                                 <div id="present-list" class="space-y-1"></div>
-                                 <div id="late-list" class="space-y-1"></div>
-                                 <div id="absent-list" class="space-y-1"></div>
-                             </div>
-                         </div>
-                     </div>
+                 <div id="scan-log" class="mt-4 p-4 bg-gray-50 rounded-lg h-48 overflow-y-auto border">
+                    <p class="text-gray-500">ผลการสแกนจะแสดงที่นี่...</p>
                 </div>
             </div>
         </main>
     </div>
+
+    <!-- Student List Modal -->
+    <div id="student-list-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50 hidden">
+        <div class="bg-white p-8 rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-2xl font-bold">จัดการข้อมูลนักเรียน</h2>
+                <button id="add-student-btn" class="bg-blue-500 text-white px-6 py-2 rounded-md hover:bg-blue-600">เพิ่มนักเรียนใหม่</button>
+            </div>
+            <div class="overflow-y-auto flex-grow">
+                <table class="w-full text-left">
+                    <thead class="bg-gray-100 sticky top-0">
+                        <tr>
+                            <th class="p-3">รหัสนักเรียน</th>
+                            <th class="p-3">ชื่อ-สกุล</th>
+                            <th class="p-3">ชั้น</th>
+                            <th class="p-3">จัดการ</th>
+                        </tr>
+                    </thead>
+                    <tbody id="student-table-body"></tbody>
+                </table>
+            </div>
+            <div class="mt-6 text-right">
+                <button id="close-list-modal-btn" class="bg-gray-300 px-6 py-2 rounded-md">ปิด</button>
+            </div>
+        </div>
+    </div>
     
-    <!-- Student Modal -->
-    <div id="student-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50 hidden">
+    <!-- Add/Edit Student Modal -->
+    <div id="student-modal" class="fixed inset-0 bg-gray-800 bg-opacity-60 flex items-center justify-center z-[60] hidden">
         <div class="bg-white p-8 rounded-lg shadow-xl w-full max-w-lg">
             <h2 id="modal-title" class="text-2xl font-bold mb-6">เพิ่มข้อมูลนักเรียน</h2>
             <form id="student-form">
@@ -155,8 +119,8 @@
                 </div>
                 <div class="mb-6">
                     <label for="student-image" class="block mb-2 font-semibold">อัปโหลดรูปภาพใบหน้า</label>
-                    <input type="file" id="student-image" accept="image/*" class="w-full p-2 border rounded-md">
-                    <p class="text-sm text-gray-500 mt-1">รูปถ่ายหน้าตรง ไม่สวมแว่นตาหรือหมวก</p>
+                    <input type="file" id="student-image" accept="image/*" class="w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
+                    <p class="text-sm text-gray-500 mt-1">สำคัญ: รูปถ่ายหน้าตรง ไม่สวมแว่นตาหรือหมวก จะใช้สร้าง Face Encoding</p>
                 </div>
                 <div class="flex justify-end space-x-4">
                     <button type="button" id="cancel-btn" class="bg-gray-300 px-6 py-2 rounded-md">ยกเลิก</button>
@@ -177,28 +141,22 @@ document.addEventListener('DOMContentLoaded', () => {
     let WEB_APP_URL = '';
     const MODEL_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
+    // DOM Elements
     const configModal = document.getElementById('config-modal');
     const appContainer = document.getElementById('app-container');
-    const webAppUrlInput = document.getElementById('web-app-url-input');
-    const saveConfigBtn = document.getElementById('save-config-btn');
-    const resetConfigBtn = document.getElementById('reset-config-btn');
-    
     const loadingOverlay = document.getElementById('loading-overlay');
     const loadingText = document.getElementById('loading-text');
-
     const video = document.getElementById('video');
     const canvas = document.getElementById('canvas');
-    
+    const studentListModal = document.getElementById('student-list-modal');
     const studentModal = document.getElementById('student-modal');
     const studentForm = document.getElementById('student-form');
-    
-    let labeledFaceDescriptors = null;
+
+    // State Variables
     let faceMatcher = null;
     let studentsData = [];
-    let dailyChartInstance = null;
     let checkInInterval = null;
     const checkedInToday = new Set();
-
 
     // --- Core Functions ---
     const showLoading = (text = 'กำลังโหลด...') => {
@@ -206,14 +164,24 @@ document.addEventListener('DOMContentLoaded', () => {
         loadingOverlay.classList.remove('hidden');
     };
     const hideLoading = () => loadingOverlay.classList.add('hidden');
+    
+    // --- Text-to-Speech ---
+    function speak(text) {
+        if ('speechSynthesis' in window) {
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'th-TH';
+            utterance.rate = 0.9;
+            window.speechSynthesis.speak(utterance);
+        } else {
+            console.log('Text-to-Speech not supported in this browser.');
+        }
+    }
 
+    // --- Google Script Communication ---
     async function callGoogleScript(action, payload = {}) {
         try {
             const response = await fetch(WEB_APP_URL, {
                 method: 'POST',
-                mode: 'cors',
-                credentials: 'omit',
-                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                 body: JSON.stringify({ action, payload })
             });
             const result = await response.json();
@@ -222,12 +190,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             return result.data;
         } catch (error) {
-            console.error('Error calling Google Script:', error);
-            Swal.fire({
-                icon: 'error',
-                title: 'เกิดข้อผิดพลาด',
-                text: `ไม่สามารถเชื่อมต่อกับ Google Sheet ได้: ${error.message}`
-            });
+            Swal.fire('เกิดข้อผิดพลาด', `ไม่สามารถเชื่อมต่อกับ Google Sheet ได้: ${error.message}`, 'error');
+            hideLoading();
             return null;
         }
     }
@@ -237,110 +201,96 @@ document.addEventListener('DOMContentLoaded', () => {
         WEB_APP_URL = localStorage.getItem('webAppUrl');
         if (!WEB_APP_URL) {
             configModal.classList.remove('hidden');
-            appContainer.classList.add('hidden');
         } else {
             configModal.classList.add('hidden');
             appContainer.classList.remove('hidden');
             initializeApp();
         }
     }
-
-    saveConfigBtn.addEventListener('click', () => {
-        const url = webAppUrlInput.value.trim();
+    document.getElementById('save-config-btn').addEventListener('click', () => {
+        const url = document.getElementById('web-app-url-input').value.trim();
         if (url) {
             localStorage.setItem('webAppUrl', url);
             checkConfig();
-        } else {
-            Swal.fire('ข้อผิดพลาด', 'กรุณากรอก Web App URL', 'error');
         }
     });
-
-    resetConfigBtn.addEventListener('click', () => {
+    document.getElementById('reset-config-btn').addEventListener('click', () => {
         localStorage.removeItem('webAppUrl');
         location.reload();
     });
 
     // --- App Initialization ---
     async function initializeApp() {
-        showLoading('กำลังโหลดโมเดลใบหน้า...');
+        showLoading('กำลังโหลดโมเดล AI...');
         await Promise.all([
             faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL),
             faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
             faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
         ]);
-        showLoading('กำลังโหลดข้อมูลนักเรียน...');
-        await loadStudentsAndPrepareMatcher();
+        await loadStudentsAndBuildMatcher();
         hideLoading();
-        
-        document.querySelector('.nav-btn[data-view="scan"]').click();
+        startVideo();
     }
     
-    // --- View Navigation ---
-    const navButtons = document.querySelectorAll('.nav-btn');
-    const views = document.querySelectorAll('.view-content');
-
-    navButtons.forEach(btn => {
-        btn.addEventListener('click', () => {
-            const viewId = btn.dataset.view;
-            
-            navButtons.forEach(b => {
-                b.classList.remove('bg-blue-500', 'text-white');
-                b.classList.add('bg-gray-200', 'text-gray-700');
-            });
-            btn.classList.add('bg-blue-500', 'text-white');
-            btn.classList.remove('bg-gray-200', 'text-gray-700');
-            
-            views.forEach(v => v.classList.add('hidden'));
-            document.getElementById(`${viewId}-view`).classList.remove('hidden');
-
-            if (viewId === 'scan') {
-                startVideo();
-            } else {
-                stopVideo();
+    async function loadStudentsAndBuildMatcher() {
+        showLoading('กำลังโหลดข้อมูลนักเรียน...');
+        const data = await callGoogleScript('getStudents');
+        if (!data) return;
+        
+        studentsData = data.map(row => ({ id: row[0], name: row[1], class: row[2], encoding: row[3] }));
+        
+        const labeledFaceDescriptors = [];
+        for (const student of studentsData) {
+            if (student.encoding) {
+                try {
+                    // The encoding is stored as a JSON string, so we parse it.
+                    const descriptorArray = JSON.parse(student.encoding);
+                    // Convert the regular array back to a Float32Array for face-api.js
+                    const descriptor = new Float32Array(descriptorArray);
+                    labeledFaceDescriptors.push(new faceapi.LabeledFaceDescriptors(student.id, [descriptor]));
+                } catch (e) {
+                    console.error(`Could not parse encoding for ${student.name}`, e);
+                }
             }
-
-            if(viewId === 'manage') loadStudentsTable();
-            if(viewId === 'dashboard') loadDashboard();
-        });
-    });
+        }
+        
+        if (labeledFaceDescriptors.length > 0) {
+            faceMatcher = new faceapi.FaceMatcher(labeledFaceDescriptors, 0.5); // Threshold: 0.5 is a good starting point
+            console.log('Face Matcher created successfully.');
+        } else {
+            faceMatcher = null;
+            console.log('No student data with encodings found. Face Matcher not created.');
+        }
+        hideLoading();
+    }
 
     // --- Face Recognition Logic ---
     function startVideo() {
-        checkedInToday.clear();
-        document.getElementById('scan-log').innerHTML = '<p class="text-gray-500">ผลการสแกนจะแสดงที่นี่...</p>';
-
         navigator.mediaDevices.getUserMedia({ video: {} })
-            .then(stream => {
-                video.srcObject = stream;
-            })
-            .catch(err => console.error(err));
+            .then(stream => { video.srcObject = stream; })
+            .catch(err => console.error("Error accessing webcam: ", err));
     }
     
-    function stopVideo() {
-        if (video.srcObject) {
-            video.srcObject.getTracks().forEach(track => track.stop());
-        }
-        clearInterval(checkInInterval);
-    }
-
     video.addEventListener('play', () => {
         const displaySize = { width: video.width, height: video.height };
         faceapi.matchDimensions(canvas, displaySize);
 
         checkInInterval = setInterval(async () => {
-            if(!faceMatcher) return;
+            if (!faceMatcher) return;
 
             const detections = await faceapi.detectAllFaces(video).withFaceLandmarks().withFaceDescriptors();
             const resizedDetections = faceapi.resizeResults(detections, displaySize);
             
-            canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
-            faceapi.draw.drawDetections(canvas, resizedDetections);
+            const context = canvas.getContext('2d');
+            context.clearRect(0, 0, canvas.width, canvas.height);
 
             const results = resizedDetections.map(d => faceMatcher.findBestMatch(d.descriptor));
             
             results.forEach((result, i) => {
                 const box = resizedDetections[i].detection.box;
-                const drawBox = new faceapi.draw.DrawBox(box, { label: result.toString() });
+                const student = studentsData.find(s => s.id === result.label);
+                const label = student ? `${student.name} (${result.distance.toFixed(2)})` : `ไม่รู้จัก (${result.distance.toFixed(2)})`;
+                const drawBox = new faceapi.draw.DrawBox(box, { label });
                 drawBox.draw(canvas);
                 
                 if (result.label !== 'unknown' && !checkedInToday.has(result.label)) {
@@ -348,7 +298,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     handleSuccessfulScan(result.label);
                 }
             });
-        }, 300);
+        }, 500); // Scan every 0.5 seconds
     });
 
     async function handleSuccessfulScan(studentId) {
@@ -357,50 +307,30 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const logDiv = document.getElementById('scan-log');
         const timestamp = new Date().toLocaleTimeString('th-TH');
-        const logEntry = document.createElement('p');
-        logEntry.className = 'text-green-600 font-semibold';
-        logEntry.textContent = `[${timestamp}] เช็คชื่อสำเร็จ: ${student.name} (${student.id})`;
+        
+        const logEntry = document.createElement('div');
+        logEntry.className = 'p-2 mb-2 bg-green-100 text-green-800 rounded-md font-semibold';
+        logEntry.innerHTML = `
+            <span class="font-normal">[${timestamp}]</span> เช็คชื่อสำเร็จ: 
+            <span class="font-bold">${student.name}</span> (รหัส: ${student.id})
+        `;
         logDiv.prepend(logEntry);
         
-        const audio = new Audio(`https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent('สวัสดี ' + student.name)}&tl=th&client=tw-ob`);
-        audio.play();
-
-        showLoading('กำลังบันทึกข้อมูล...');
+        speak(`สวัสดีค่ะ ${student.name}`);
+        
         await callGoogleScript('recordAttendance', { id: student.id, name: student.name });
-        hideLoading();
     }
+
+    // --- Student Management UI ---
+    document.getElementById('manage-data-btn').addEventListener('click', async () => {
+        await loadStudentsTable();
+        studentListModal.classList.remove('hidden');
+    });
+
+    document.getElementById('close-list-modal-btn').addEventListener('click', () => {
+        studentListModal.classList.add('hidden');
+    });
     
-    async function loadStudentsAndPrepareMatcher() {
-        const data = await callGoogleScript('getStudents');
-        if (!data) return;
-        
-        studentsData = data.map(row => ({ id: row[0], name: row[1], class: row[2], image: row[3] }));
-        
-        const descriptors = [];
-        for (const student of studentsData) {
-            if (student.image) {
-                try {
-                    const img = await faceapi.fetchImage(student.image);
-                    const detection = await faceapi.detectSingleFace(img).withFaceLandmarks().withFaceDescriptor();
-                    if(detection) {
-                        descriptors.push(new faceapi.LabeledFaceDescriptors(student.id, [detection.descriptor]));
-                    }
-                } catch (e) {
-                    console.error(`Could not process image for ${student.name}`, e);
-                }
-            }
-        }
-        
-        if (descriptors.length > 0) {
-            labeledFaceDescriptors = descriptors;
-            faceMatcher = new faceapi.FaceMatcher(labeledFaceDescriptors, 0.55); // Adjust threshold if needed
-        } else {
-            faceMatcher = null;
-        }
-    }
-
-
-    // --- Student Management ---
     document.getElementById('add-student-btn').addEventListener('click', () => openStudentModal());
 
     function openStudentModal(student = null, rowIndex = null) {
@@ -431,9 +361,8 @@ document.addEventListener('DOMContentLoaded', () => {
             id: document.getElementById('student-id').value,
             name: document.getElementById('student-name').value,
             class: document.getElementById('student-class').value,
-            image: null
+            faceEncoding: null
         };
-        
         const imageFile = document.getElementById('student-image').files[0];
 
         if (!student.rowIndex && !imageFile) {
@@ -441,41 +370,45 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        showLoading('กำลังบันทึกข้อมูล...');
+        showLoading('กำลังประมวลผลใบหน้า...');
 
         if (imageFile) {
-            student.image = await toBase64(imageFile);
+            const image = await faceapi.bufferToImage(imageFile);
+            const detection = await faceapi.detectSingleFace(image).withFaceLandmarks().withFaceDescriptor();
+
+            if (!detection) {
+                hideLoading();
+                Swal.fire('ข้อผิดพลาด', 'ไม่พบใบหน้าในรูปภาพ หรือรูปภาพไม่ชัดเจน กรุณาลองใหม่', 'error');
+                return;
+            }
+            // Convert Float32Array to a standard array, then to a JSON string for storage.
+            student.faceEncoding = JSON.stringify(Array.from(detection.descriptor));
         }
 
+        showLoading('กำลังบันทึกข้อมูล...');
         const action = student.rowIndex ? 'updateStudent' : 'addStudent';
         const result = await callGoogleScript(action, student);
         
         if (result) {
             studentModal.classList.add('hidden');
-            await loadStudentsAndPrepareMatcher(); // Reload all data
+            await loadStudentsAndBuildMatcher(); // Critical: Re-build the matcher with new data
             await loadStudentsTable();
             Swal.fire('สำเร็จ', 'บันทึกข้อมูลเรียบร้อย', 'success');
         }
         hideLoading();
     });
 
-    const toBase64 = file => new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = error => reject(error);
-    });
-
     async function loadStudentsTable() {
         showLoading('กำลังโหลดตาราง...');
         const tableBody = document.getElementById('student-table-body');
-        tableBody.innerHTML = '';
+        tableBody.innerHTML = '<tr><td colspan="4" class="text-center p-4">กำลังโหลด...</td></tr>';
         
-        // Use already loaded data if available
+        // Use already loaded data
         if (studentsData.length === 0) {
-            await loadStudentsAndPrepareMatcher();
+            await loadStudentsAndBuildMatcher();
         }
-
+        
+        tableBody.innerHTML = ''; // Clear loading text
         studentsData.forEach((student, index) => {
             const row = document.createElement('tr');
             row.className = 'border-b';
@@ -485,41 +418,33 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td class="p-3">${student.class}</td>
                 <td class="p-3">
                     <button class="edit-btn bg-blue-100 text-blue-700 px-3 py-1 rounded text-sm" data-index="${index}">แก้ไข</button>
-                    <button class="delete-btn bg-red-100 text-red-700 px-3 py-1 rounded text-sm ml-2" data-id="${student.id}" data-rowindex="${index + 2}">ลบ</button>
+                    <button class="delete-btn bg-red-100 text-red-700 px-3 py-1 rounded text-sm ml-2" data-rowindex="${index + 2}">ลบ</button>
                 </td>
             `;
             tableBody.appendChild(row);
         });
 
-        document.querySelectorAll('.edit-btn').forEach(btn => {
+        tableBody.querySelectorAll('.edit-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 const index = e.target.dataset.index;
-                const rowIndex = parseInt(index) + 2; // +2 for header and 1-based index
-                openStudentModal(studentsData[index], rowIndex);
+                openStudentModal(studentsData[index], parseInt(index) + 2);
             });
         });
 
-        document.querySelectorAll('.delete-btn').forEach(btn => {
+        tableBody.querySelectorAll('.delete-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
-                const id = e.target.dataset.id;
                 const rowIndex = e.target.dataset.rowindex;
                 Swal.fire({
-                    title: `ต้องการลบ ${id}?`,
-                    text: "ข้อมูลนี้จะถูกลบอย่างถาวร!",
-                    icon: 'warning',
-                    showCancelButton: true,
-                    confirmButtonColor: '#d33',
-                    cancelButtonColor: '#3085d6',
-                    confirmButtonText: 'ใช่, ลบเลย!',
-                    cancelButtonText: 'ยกเลิก'
+                    title: `ต้องการลบข้อมูลนี้?`, text: "การกระทำนี้ไม่สามารถย้อนกลับได้!", icon: 'warning',
+                    showCancelButton: true, confirmButtonColor: '#d33', cancelButtonText: 'ยกเลิก', confirmButtonText: 'ใช่, ลบเลย!'
                 }).then(async (result) => {
                     if (result.isConfirmed) {
                         showLoading('กำลังลบข้อมูล...');
                         await callGoogleScript('deleteStudent', { rowIndex });
-                        await loadStudentsAndPrepareMatcher();
+                        await loadStudentsAndBuildMatcher();
                         await loadStudentsTable();
                         hideLoading();
-                        Swal.fire('ลบแล้ว!', 'ข้อมูลนักเรียนถูกลบเรียบร้อย', 'success');
+                        Swal.fire('ลบแล้ว!', 'ข้อมูลถูกลบเรียบร้อย', 'success');
                     }
                 })
             });
@@ -527,61 +452,10 @@ document.addEventListener('DOMContentLoaded', () => {
         hideLoading();
     }
     
-    // --- Dashboard Logic ---
-    const reportDateInput = document.getElementById('report-date');
-    reportDateInput.valueAsDate = new Date();
-    reportDateInput.addEventListener('change', loadDashboard);
-    
-    async function loadDashboard() {
-        showLoading('กำลังโหลดสถิติ...');
-        const date = reportDateInput.value;
-        const data = await callGoogleScript('getAttendanceStats', { date });
-        hideLoading();
-        
-        if (data) {
-            renderDashboard(data);
-        }
-    }
-
-    function renderDashboard(data) {
-        // Render Chart
-        const ctx = document.getElementById('daily-chart').getContext('2d');
-        const chartData = {
-            labels: ['มาเรียน', 'มาสาย', 'ขาดเรียน'],
-            datasets: [{
-                label: 'จำนวนนักเรียน',
-                data: [data.present.length, data.late.length, data.absent.length],
-                backgroundColor: ['#10B981', '#F59E0B', '#EF4444'],
-            }]
-        };
-
-        if (dailyChartInstance) {
-            dailyChartInstance.destroy();
-        }
-        
-        dailyChartInstance = new Chart(ctx, {
-            type: 'pie',
-            data: chartData,
-            options: {
-                responsive: true,
-                plugins: { legend: { position: 'top' } }
-            }
-        });
-        
-        // Render Lists
-        const renderList = (elementId, list) => {
-            const container = document.getElementById(elementId);
-            container.innerHTML = list.map(item => `<div class="p-2 bg-gray-100 rounded">${item.name} (${item.id})</div>`).join('');
-        };
-
-        renderList('present-list', data.present);
-        renderList('late-list', data.late);
-        renderList('absent-list', data.absent);
-    }
-
     // --- Initial Load ---
     checkConfig();
 });
 </script>
 </body>
 </html>
+

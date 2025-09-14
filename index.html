@@ -11,23 +11,15 @@
     <style>
         body { font-family: 'Kanit', sans-serif; }
         .loader {
-            border: 8px solid #f3f3f3;
-            border-radius: 50%;
-            border-top: 8px solid #3498db;
-            width: 60px;
-            height: 60px;
-            animation: spin 2s linear infinite;
+            border: 8px solid #f3f3f3; border-radius: 50%; border-top: 8px solid #3498db;
+            width: 60px; height: 60px; animation: spin 2s linear infinite;
         }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         #video-container { position: relative; }
-        #video, #canvas {
-            position: absolute;
-            top: 0;
-            left: 0;
-            transform: scaleX(-1); /* Mirror view */
+        #video, #canvas { position: absolute; top: 0; left: 0; transform: scaleX(-1); }
+        #status-indicator {
+            position: absolute; top: 1rem; right: 1rem; padding: 0.5rem 1rem;
+            border-radius: 9999px; font-weight: 600; z-index: 10;
         }
     </style>
 </head>
@@ -58,11 +50,11 @@
             </div>
         </header>
 
-        <!-- Main Content -->
         <main>
             <div class="bg-white p-6 rounded-lg shadow-md">
                 <h2 class="text-2xl font-bold mb-4">สแกนใบหน้าเพื่อเช็คชื่อ</h2>
                 <div id="video-container" class="w-full max-w-2xl mx-auto aspect-video bg-gray-900 rounded-lg overflow-hidden mb-4 shadow-inner">
+                    <div id="status-indicator"></div>
                     <video id="video" width="720" height="560" autoplay muted></video>
                     <canvas id="canvas"></canvas>
                 </div>
@@ -72,156 +64,94 @@
             </div>
         </main>
     </div>
-
-    <!-- Student List Modal -->
+    
+    <!-- Student Modals (re-used from previous version) -->
     <div id="student-list-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50 hidden">
         <div class="bg-white p-8 rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
-            <div class="flex justify-between items-center mb-4">
-                <h2 class="text-2xl font-bold">จัดการข้อมูลนักเรียน</h2>
-                <button id="add-student-btn" class="bg-blue-500 text-white px-6 py-2 rounded-md hover:bg-blue-600">เพิ่มนักเรียนใหม่</button>
-            </div>
-            <div class="overflow-y-auto flex-grow">
-                <table class="w-full text-left">
-                    <thead class="bg-gray-100 sticky top-0">
-                        <tr>
-                            <th class="p-3">รหัสนักเรียน</th>
-                            <th class="p-3">ชื่อ-สกุล</th>
-                            <th class="p-3">ชั้น</th>
-                            <th class="p-3">จัดการ</th>
-                        </tr>
-                    </thead>
-                    <tbody id="student-table-body"></tbody>
-                </table>
-            </div>
-            <div class="mt-6 text-right">
-                <button id="close-list-modal-btn" class="bg-gray-300 px-6 py-2 rounded-md">ปิด</button>
-            </div>
+            <div class="flex justify-between items-center mb-4"><h2 class="text-2xl font-bold">จัดการข้อมูลนักเรียน</h2><button id="add-student-btn" class="bg-blue-500 text-white px-6 py-2 rounded-md hover:bg-blue-600">เพิ่มนักเรียนใหม่</button></div>
+            <div class="overflow-y-auto flex-grow"><table class="w-full text-left"><thead class="bg-gray-100 sticky top-0"><tr><th class="p-3">รหัสนักเรียน</th><th class="p-3">ชื่อ-สกุล</th><th class="p-3">ชั้น</th><th class="p-3">จัดการ</th></tr></thead><tbody id="student-table-body"></tbody></table></div>
+            <div class="mt-6 text-right"><button id="close-list-modal-btn" class="bg-gray-300 px-6 py-2 rounded-md">ปิด</button></div>
         </div>
     </div>
-    
-    <!-- Add/Edit Student Modal -->
     <div id="student-modal" class="fixed inset-0 bg-gray-800 bg-opacity-60 flex items-center justify-center z-[60] hidden">
-        <div class="bg-white p-8 rounded-lg shadow-xl w-full max-w-lg">
-            <h2 id="modal-title" class="text-2xl font-bold mb-6">เพิ่มข้อมูลนักเรียน</h2>
-            <form id="student-form">
-                <input type="hidden" id="student-row-index">
-                <div class="mb-4">
-                    <label for="student-id" class="block mb-2 font-semibold">รหัสนักเรียน</label>
-                    <input type="text" id="student-id" class="w-full p-2 border rounded-md" required>
-                </div>
-                <div class="mb-4">
-                    <label for="student-name" class="block mb-2 font-semibold">ชื่อ-สกุล</label>
-                    <input type="text" id="student-name" class="w-full p-2 border rounded-md" required>
-                </div>
-                 <div class="mb-4">
-                    <label for="student-class" class="block mb-2 font-semibold">ชั้น</label>
-                    <input type="text" id="student-class" class="w-full p-2 border rounded-md" required>
-                </div>
-                <div class="mb-6">
-                    <label for="student-image" class="block mb-2 font-semibold">อัปโหลดรูปภาพใบหน้า</label>
-                    <input type="file" id="student-image" accept="image/*" class="w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
-                    <p class="text-sm text-gray-500 mt-1">สำคัญ: รูปถ่ายหน้าตรง ไม่สวมแว่นตาหรือหมวก จะใช้สร้าง Face Encoding</p>
-                </div>
-                <div class="flex justify-end space-x-4">
-                    <button type="button" id="cancel-btn" class="bg-gray-300 px-6 py-2 rounded-md">ยกเลิก</button>
-                    <button type="submit" id="save-student-btn" class="bg-blue-500 text-white px-6 py-2 rounded-md">บันทึก</button>
-                </div>
-            </form>
-        </div>
+        <div class="bg-white p-8 rounded-lg shadow-xl w-full max-w-lg"><h2 id="modal-title" class="text-2xl font-bold mb-6">เพิ่มข้อมูลนักเรียน</h2><form id="student-form"><input type="hidden" id="student-row-index"><div class="mb-4"><label for="student-id" class="block mb-2 font-semibold">รหัสนักเรียน</label><input type="text" id="student-id" class="w-full p-2 border rounded-md" required></div><div class="mb-4"><label for="student-name" class="block mb-2 font-semibold">ชื่อ-สกุล</label><input type="text" id="student-name" class="w-full p-2 border rounded-md" required></div><div class="mb-4"><label for="student-class" class="block mb-2 font-semibold">ชั้น</label><input type="text" id="student-class" class="w-full p-2 border rounded-md" required></div><div class="mb-6"><label for="student-image" class="block mb-2 font-semibold">อัปโหลดรูปภาพใบหน้า</label><input type="file" id="student-image" accept="image/*" class="w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"><p class="text-sm text-gray-500 mt-1">สำคัญ: รูปถ่ายหน้าตรง ไม่สวมแว่นตาหรือหมวก</p></div><div class="flex justify-end space-x-4"><button type="button" id="cancel-btn" class="bg-gray-300 px-6 py-2 rounded-md">ยกเลิก</button><button type="submit" id="save-student-btn" class="bg-blue-500 text-white px-6 py-2 rounded-md">บันทึก</button></div></form></div>
     </div>
     
     <!-- Loading Spinner -->
-    <div id="loading-overlay" class="fixed inset-0 bg-white bg-opacity-80 flex flex-col items-center justify-center z-[100] hidden">
-        <div class="loader"></div>
-        <p id="loading-text" class="mt-4 text-lg font-semibold text-gray-700">กำลังโหลด...</p>
-    </div>
+    <div id="loading-overlay" class="fixed inset-0 bg-white bg-opacity-80 flex flex-col items-center justify-center z-[100] hidden"><div class="loader"></div><p id="loading-text" class="mt-4 text-lg font-semibold text-gray-700">กำลังโหลด...</p></div>
 
 <script>
 document.addEventListener('DOMContentLoaded', () => {
+    // --- Basic setup and DOM Elements ---
     let WEB_APP_URL = '';
     const MODEL_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
-
-    // DOM Elements
     const configModal = document.getElementById('config-modal');
     const appContainer = document.getElementById('app-container');
     const loadingOverlay = document.getElementById('loading-overlay');
     const loadingText = document.getElementById('loading-text');
     const video = document.getElementById('video');
     const canvas = document.getElementById('canvas');
+    const statusIndicator = document.getElementById('status-indicator');
     const studentListModal = document.getElementById('student-list-modal');
     const studentModal = document.getElementById('student-modal');
     const studentForm = document.getElementById('student-form');
 
-    // State Variables
     let faceMatcher = null;
     let studentsData = [];
     let checkInInterval = null;
     const checkedInToday = new Set();
-
-    // --- Core Functions ---
-    const showLoading = (text = 'กำลังโหลด...') => {
-        loadingText.innerText = text;
-        loadingOverlay.classList.remove('hidden');
-    };
-    const hideLoading = () => loadingOverlay.classList.add('hidden');
+    let isScanningPaused = false;
     
-    // --- Text-to-Speech ---
+    // --- Core Functions: Loading, Status, TTS, API Call ---
+    const showLoading = (text = 'กำลังโหลด...') => { loadingText.innerText = text; loadingOverlay.classList.remove('hidden'); };
+    const hideLoading = () => loadingOverlay.classList.add('hidden');
+
+    const setStatus = (text, colorClass) => {
+        statusIndicator.textContent = text;
+        statusIndicator.className = `bg-${colorClass}-100 text-${colorClass}-800`;
+    };
+    
     function speak(text) {
         if ('speechSynthesis' in window) {
+            window.speechSynthesis.cancel(); // Stop any previous speech
             const utterance = new SpeechSynthesisUtterance(text);
             utterance.lang = 'th-TH';
             utterance.rate = 0.9;
             window.speechSynthesis.speak(utterance);
-        } else {
-            console.log('Text-to-Speech not supported in this browser.');
         }
     }
 
-    // --- Google Script Communication ---
     async function callGoogleScript(action, payload = {}) {
         try {
-            const response = await fetch(WEB_APP_URL, {
-                method: 'POST',
-                body: JSON.stringify({ action, payload })
-            });
+            const response = await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action, payload }) });
             const result = await response.json();
-            if(result.status === 'error'){
-                throw new Error(result.message);
-            }
+            if(result.status === 'error') throw new Error(result.message);
             return result.data;
         } catch (error) {
-            Swal.fire('เกิดข้อผิดพลาด', `ไม่สามารถเชื่อมต่อกับ Google Sheet ได้: ${error.message}`, 'error');
+            Swal.fire('เกิดข้อผิดพลาด', `ไม่สามารถเชื่อมต่อ Google Sheet: ${error.message}`, 'error');
             hideLoading();
             return null;
         }
     }
     
     // --- Config Management ---
-    function checkConfig() {
+    const checkConfig = () => {
         WEB_APP_URL = localStorage.getItem('webAppUrl');
-        if (!WEB_APP_URL) {
-            configModal.classList.remove('hidden');
-        } else {
-            configModal.classList.add('hidden');
-            appContainer.classList.remove('hidden');
-            initializeApp();
-        }
-    }
+        if (!WEB_APP_URL) configModal.classList.remove('hidden');
+        else { configModal.classList.add('hidden'); appContainer.classList.remove('hidden'); initializeApp(); }
+    };
     document.getElementById('save-config-btn').addEventListener('click', () => {
         const url = document.getElementById('web-app-url-input').value.trim();
-        if (url) {
-            localStorage.setItem('webAppUrl', url);
-            checkConfig();
-        }
+        if (url) { localStorage.setItem('webAppUrl', url); checkConfig(); }
     });
     document.getElementById('reset-config-btn').addEventListener('click', () => {
-        localStorage.removeItem('webAppUrl');
-        location.reload();
+        localStorage.removeItem('webAppUrl'); location.reload();
     });
 
-    // --- App Initialization ---
+    // --- App Initialization & Face Matcher Builder ---
     async function initializeApp() {
         showLoading('กำลังโหลดโมเดล AI...');
+        setStatus('กำลังโหลดโมเดล...', 'yellow');
         await Promise.all([
             faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL),
             faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
@@ -234,104 +164,119 @@ document.addEventListener('DOMContentLoaded', () => {
     
     async function loadStudentsAndBuildMatcher() {
         showLoading('กำลังโหลดข้อมูลนักเรียน...');
+        setStatus('โหลดข้อมูล...', 'yellow');
+        console.log("Fetching student data from Google Sheet...");
         const data = await callGoogleScript('getStudents');
-        if (!data) return;
-        
-        studentsData = data.map(row => ({ id: row[0], name: row[1], class: row[2], encoding: row[3] }));
-        
-        const labeledFaceDescriptors = [];
-        for (const student of studentsData) {
-            if (student.encoding) {
-                try {
-                    // The encoding is stored as a JSON string, so we parse it.
-                    const descriptorArray = JSON.parse(student.encoding);
-                    // Convert the regular array back to a Float32Array for face-api.js
-                    const descriptor = new Float32Array(descriptorArray);
-                    labeledFaceDescriptors.push(new faceapi.LabeledFaceDescriptors(student.id, [descriptor]));
-                } catch (e) {
-                    console.error(`Could not parse encoding for ${student.name}`, e);
-                }
-            }
+        if (!data) {
+            setStatus('เชื่อมต่อไม่ได้', 'red');
+            return;
         }
         
+        console.log(`Found ${data.length} student records.`);
+        studentsData = data.map(row => ({ id: row[0], name: row[1], class: row[2], encoding: row[3] }));
+        
+        const labeledFaceDescriptors = studentsData.map(student => {
+            if (!student.encoding) return null;
+            try {
+                const descriptor = new Float32Array(JSON.parse(student.encoding));
+                return new faceapi.LabeledFaceDescriptors(student.id, [descriptor]);
+            } catch (e) {
+                console.error(`Could not parse encoding for ${student.name}`, e);
+                return null;
+            }
+        }).filter(Boolean); // Filter out nulls
+        
         if (labeledFaceDescriptors.length > 0) {
-            faceMatcher = new faceapi.FaceMatcher(labeledFaceDescriptors, 0.5); // Threshold: 0.5 is a good starting point
-            console.log('Face Matcher created successfully.');
+            faceMatcher = new faceapi.FaceMatcher(labeledFaceDescriptors, 0.5); // Threshold 0.5
+            setStatus('พร้อมสแกน', 'green');
+            console.log(`Face Matcher created with ${labeledFaceDescriptors.length} entries.`);
         } else {
             faceMatcher = null;
-            console.log('No student data with encodings found. Face Matcher not created.');
+            setStatus('! ไม่พบข้อมูลใบหน้า', 'red');
+            console.warn("Face Matcher not created. No valid face encodings found in the sheet.");
         }
         hideLoading();
     }
 
-    // --- Face Recognition Logic ---
-    function startVideo() {
+    // --- Real-time Face Recognition ---
+    const startVideo = () => {
         navigator.mediaDevices.getUserMedia({ video: {} })
             .then(stream => { video.srcObject = stream; })
-            .catch(err => console.error("Error accessing webcam: ", err));
-    }
+            .catch(err => {
+                console.error("Error accessing webcam: ", err);
+                setStatus('! ไม่สามารถเปิดกล้อง', 'red');
+                Swal.fire('เกิดข้อผิดพลาด', 'ไม่สามารถเข้าถึงกล้องเว็บแคมได้ กรุณาตรวจสอบการอนุญาต', 'error');
+            });
+    };
     
     video.addEventListener('play', () => {
         const displaySize = { width: video.width, height: video.height };
         faceapi.matchDimensions(canvas, displaySize);
+        if (checkInInterval) clearInterval(checkInInterval); // Clear any previous interval
 
         checkInInterval = setInterval(async () => {
-            if (!faceMatcher) return;
+            if (!faceMatcher || isScanningPaused) return;
 
             const detections = await faceapi.detectAllFaces(video).withFaceLandmarks().withFaceDescriptors();
             const resizedDetections = faceapi.resizeResults(detections, displaySize);
-            
             const context = canvas.getContext('2d');
             context.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (resizedDetections.length === 0) return;
 
             const results = resizedDetections.map(d => faceMatcher.findBestMatch(d.descriptor));
             
             results.forEach((result, i) => {
                 const box = resizedDetections[i].detection.box;
-                const student = studentsData.find(s => s.id === result.label);
-                const label = student ? `${student.name} (${result.distance.toFixed(2)})` : `ไม่รู้จัก (${result.distance.toFixed(2)})`;
-                const drawBox = new faceapi.draw.DrawBox(box, { label });
-                drawBox.draw(canvas);
-                
-                if (result.label !== 'unknown' && !checkedInToday.has(result.label)) {
-                    checkedInToday.add(result.label);
-                    handleSuccessfulScan(result.label);
+                if (result.label === 'unknown') {
+                    const drawBox = new faceapi.draw.DrawBox(box, { label: 'ไม่รู้จัก', boxColor: 'red' });
+                    drawBox.draw(canvas);
+                } else {
+                    const student = studentsData.find(s => s.id === result.label);
+                    const label = `${student.name}`;
+                    const drawBox = new faceapi.draw.DrawBox(box, { label });
+                    drawBox.draw(canvas);
+                    
+                    if (!checkedInToday.has(result.label)) {
+                        handleSuccessfulScan(result.label, student.name);
+                    }
                 }
             });
-        }, 500); // Scan every 0.5 seconds
+        }, 700);
     });
 
-    async function handleSuccessfulScan(studentId) {
-        const student = studentsData.find(s => s.id === studentId);
-        if(!student) return;
-
+    async function handleSuccessfulScan(studentId, studentName) {
+        checkedInToday.add(studentId);
+        isScanningPaused = true; // Pause scanning to prevent multiple check-ins
+        
+        setStatus(`พบ: ${studentName}`, 'blue');
+        speak(`สวัสดีค่ะ ${studentName}`);
+        
         const logDiv = document.getElementById('scan-log');
         const timestamp = new Date().toLocaleTimeString('th-TH');
-        
         const logEntry = document.createElement('div');
         logEntry.className = 'p-2 mb-2 bg-green-100 text-green-800 rounded-md font-semibold';
-        logEntry.innerHTML = `
-            <span class="font-normal">[${timestamp}]</span> เช็คชื่อสำเร็จ: 
-            <span class="font-bold">${student.name}</span> (รหัส: ${student.id})
-        `;
+        logEntry.innerHTML = `[${timestamp}] เช็คชื่อสำเร็จ: <span class="font-bold">${studentName}</span> (รหัส: ${studentId})`;
         logDiv.prepend(logEntry);
         
-        speak(`สวัสดีค่ะ ${student.name}`);
-        
-        await callGoogleScript('recordAttendance', { id: student.id, name: student.name });
+        await callGoogleScript('recordAttendance', { id: studentId, name: studentName });
+
+        // Resume scanning after a delay
+        setTimeout(() => {
+            isScanningPaused = false;
+            setStatus('พร้อมสแกน', 'green');
+        }, 3000); // Wait 3 seconds before scanning again
     }
 
-    // --- Student Management UI ---
+    // --- Student Management UI (Forms and Tables) ---
     document.getElementById('manage-data-btn').addEventListener('click', async () => {
-        await loadStudentsTable();
-        studentListModal.classList.remove('hidden');
+        await loadStudentsTable(); studentListModal.classList.remove('hidden');
     });
-
     document.getElementById('close-list-modal-btn').addEventListener('click', () => {
         studentListModal.classList.add('hidden');
     });
-    
     document.getElementById('add-student-btn').addEventListener('click', () => openStudentModal());
+    document.getElementById('cancel-btn').addEventListener('click', () => studentModal.classList.add('hidden'));
 
     function openStudentModal(student = null, rowIndex = null) {
         studentForm.reset();
@@ -348,14 +293,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         studentModal.classList.remove('hidden');
     }
-    
-    document.getElementById('cancel-btn').addEventListener('click', () => {
-        studentModal.classList.add('hidden');
-    });
 
     studentForm.addEventListener('submit', async (e) => {
         e.preventDefault();
-        
         const student = {
             rowIndex: document.getElementById('student-row-index').value,
             id: document.getElementById('student-id').value,
@@ -366,32 +306,23 @@ document.addEventListener('DOMContentLoaded', () => {
         const imageFile = document.getElementById('student-image').files[0];
 
         if (!student.rowIndex && !imageFile) {
-            Swal.fire('ข้อผิดพลาด', 'กรุณาอัปโหลดรูปภาพสำหรับนักเรียนใหม่', 'error');
-            return;
+            Swal.fire('ข้อผิดพลาด', 'กรุณาอัปโหลดรูปภาพสำหรับนักเรียนใหม่', 'error'); return;
         }
-
         showLoading('กำลังประมวลผลใบหน้า...');
-
         if (imageFile) {
             const image = await faceapi.bufferToImage(imageFile);
             const detection = await faceapi.detectSingleFace(image).withFaceLandmarks().withFaceDescriptor();
-
             if (!detection) {
-                hideLoading();
-                Swal.fire('ข้อผิดพลาด', 'ไม่พบใบหน้าในรูปภาพ หรือรูปภาพไม่ชัดเจน กรุณาลองใหม่', 'error');
-                return;
+                hideLoading(); Swal.fire('ข้อผิดพลาด', 'ไม่พบใบหน้าในรูปภาพ!', 'error'); return;
             }
-            // Convert Float32Array to a standard array, then to a JSON string for storage.
             student.faceEncoding = JSON.stringify(Array.from(detection.descriptor));
         }
-
         showLoading('กำลังบันทึกข้อมูล...');
         const action = student.rowIndex ? 'updateStudent' : 'addStudent';
         const result = await callGoogleScript(action, student);
-        
         if (result) {
             studentModal.classList.add('hidden');
-            await loadStudentsAndBuildMatcher(); // Critical: Re-build the matcher with new data
+            await loadStudentsAndBuildMatcher(); // Re-build matcher
             await loadStudentsTable();
             Swal.fire('สำเร็จ', 'บันทึกข้อมูลเรียบร้อย', 'success');
         }
@@ -402,52 +333,24 @@ document.addEventListener('DOMContentLoaded', () => {
         showLoading('กำลังโหลดตาราง...');
         const tableBody = document.getElementById('student-table-body');
         tableBody.innerHTML = '<tr><td colspan="4" class="text-center p-4">กำลังโหลด...</td></tr>';
-        
-        // Use already loaded data
-        if (studentsData.length === 0) {
-            await loadStudentsAndBuildMatcher();
-        }
-        
-        tableBody.innerHTML = ''; // Clear loading text
-        studentsData.forEach((student, index) => {
-            const row = document.createElement('tr');
-            row.className = 'border-b';
-            row.innerHTML = `
-                <td class="p-3">${student.id}</td>
-                <td class="p-3">${student.name}</td>
-                <td class="p-3">${student.class}</td>
-                <td class="p-3">
-                    <button class="edit-btn bg-blue-100 text-blue-700 px-3 py-1 rounded text-sm" data-index="${index}">แก้ไข</button>
-                    <button class="delete-btn bg-red-100 text-red-700 px-3 py-1 rounded text-sm ml-2" data-rowindex="${index + 2}">ลบ</button>
-                </td>
-            `;
-            tableBody.appendChild(row);
-        });
-
-        tableBody.querySelectorAll('.edit-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const index = e.target.dataset.index;
-                openStudentModal(studentsData[index], parseInt(index) + 2);
+        await callGoogleScript('getStudents').then(data => {
+            if (!data) return;
+            studentsData = data.map(row => ({ id: row[0], name: row[1], class: row[2] })); // Simplified for table
+            tableBody.innerHTML = '';
+            studentsData.forEach((student, index) => {
+                const row = document.createElement('tr'); row.className = 'border-b';
+                row.innerHTML = `<td class="p-3">${student.id}</td><td class="p-3">${student.name}</td><td class="p-3">${student.class}</td><td class="p-3"><button class="edit-btn bg-blue-100 text-blue-700 px-3 py-1 rounded text-sm" data-index="${index}">แก้ไข</button><button class="delete-btn bg-red-100 text-red-700 px-3 py-1 rounded text-sm ml-2" data-rowindex="${index + 2}">ลบ</button></td>`;
+                tableBody.appendChild(row);
             });
-        });
-
-        tableBody.querySelectorAll('.delete-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const rowIndex = e.target.dataset.rowindex;
-                Swal.fire({
-                    title: `ต้องการลบข้อมูลนี้?`, text: "การกระทำนี้ไม่สามารถย้อนกลับได้!", icon: 'warning',
-                    showCancelButton: true, confirmButtonColor: '#d33', cancelButtonText: 'ยกเลิก', confirmButtonText: 'ใช่, ลบเลย!'
-                }).then(async (result) => {
-                    if (result.isConfirmed) {
-                        showLoading('กำลังลบข้อมูล...');
-                        await callGoogleScript('deleteStudent', { rowIndex });
-                        await loadStudentsAndBuildMatcher();
-                        await loadStudentsTable();
-                        hideLoading();
-                        Swal.fire('ลบแล้ว!', 'ข้อมูลถูกลบเรียบร้อย', 'success');
-                    }
-                })
-            });
+            tableBody.querySelectorAll('.edit-btn').forEach(btn => btn.addEventListener('click', (e) => openStudentModal(studentsData[e.target.dataset.index], parseInt(e.target.dataset.index) + 2)));
+            tableBody.querySelectorAll('.delete-btn').forEach(btn => btn.addEventListener('click', (e) => {
+                Swal.fire({title: `ต้องการลบข้อมูลนี้?`, text: "ไม่สามารถย้อนกลับได้!", icon: 'warning', showCancelButton: true, confirmButtonColor: '#d33', cancelButtonText: 'ยกเลิก', confirmButtonText: 'ใช่, ลบเลย!'})
+                .then(async (result) => { if (result.isConfirmed) {
+                    showLoading('กำลังลบ...'); await callGoogleScript('deleteStudent', { rowIndex: e.target.dataset.rowindex });
+                    await loadStudentsAndBuildMatcher(); await loadStudentsTable(); hideLoading();
+                    Swal.fire('ลบแล้ว!', 'ข้อมูลถูกลบเรียบร้อย', 'success');
+                }});
+            }));
         });
         hideLoading();
     }

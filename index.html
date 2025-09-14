@@ -1,96 +1,587 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="th">
 <head>
-  <meta charset="UTF-8">
-  <title>Face Recognition Attendance</title>
-  <style>
-    body { font-family: Arial, sans-serif; margin: 20px; }
-    #config-container { margin-bottom: 20px; padding: 10px; border: 1px solid #ccc; border-radius: 8px; }
-    label { display: block; margin: 5px 0; }
-    input[type="text"] { width: 100%; padding: 6px; margin-bottom: 10px; }
-    button { padding: 6px 12px; margin-right: 8px; }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบเช็คชื่อด้วยการสแกนใบหน้า</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Kanit', sans-serif; }
+        .loader {
+            border: 8px solid #f3f3f3;
+            border-radius: 50%;
+            border-top: 8px solid #3498db;
+            width: 60px;
+            height: 60px;
+            animation: spin 2s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        #video-container { position: relative; }
+        #video, #canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+    </style>
 </head>
-<body>
-  <h1>ระบบเช็คชื่อด้วยการสแกนใบหน้า</h1>
+<body class="bg-gray-100 text-gray-800">
 
-  <!-- Config Form -->
-  <div id="config-container">
-    <h3>ตั้งค่า Config</h3>
-    <label for="webAppUrl">Google Apps Script Web App URL:</label>
-    <input type="text" id="webAppUrl" placeholder="กรอก URL ของ Web App">
-    <button onclick="saveConfig()">บันทึก</button>
-    <button onclick="resetConfig()">รีเซ็ตค่า</button>
-  </div>
+    <!-- Modal for Config -->
+    <div id="config-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50 hidden">
+        <div class="bg-white p-8 rounded-lg shadow-xl w-full max-w-md">
+            <h2 class="text-2xl font-bold mb-4">ตั้งค่า Google Web App URL</h2>
+            <p class="mb-4 text-gray-600">กรุณานำ URL ของ Web App ที่ได้จากการ Deploy Google Apps Script มาใส่ที่นี่</p>
+            <input type="url" id="web-app-url-input" class="w-full p-2 border rounded-md mb-4" placeholder="https://script.google.com/macros/s/...">
+            <button id="save-config-btn" class="w-full bg-blue-500 text-white py-2 rounded-md hover:bg-blue-600">บันทึก</button>
+        </div>
+    </div>
 
-  <div id="main-app" style="display:none;">
-    <h2>📋 เมนูหลัก</h2>
-    <button onclick="loadStudents()">📖 จัดการนักเรียน</button>
-    <button onclick="loadReport()">📊 รายงานสถิติ</button>
-    <div id="output"></div>
-  </div>
+    <!-- Main Container -->
+    <div id="app-container" class="container mx-auto p-4 md:p-8 hidden">
+        <header class="bg-white shadow-md rounded-lg p-6 mb-8">
+            <div class="flex justify-between items-center">
+                <div>
+                    <h1 class="text-3xl font-bold text-blue-600">ระบบเช็คชื่อด้วยการสแกนใบหน้า</h1>
+                    <p class="text-gray-500">จัดการข้อมูลและดูสถิติการเข้าเรียน</p>
+                </div>
+                <button id="reset-config-btn" class="bg-yellow-500 text-white px-4 py-2 rounded-md hover:bg-yellow-600 text-sm">Reset URL</button>
+            </div>
+        </header>
 
-  <script>
-    // โหลดค่า config จาก LocalStorage
-    let CONFIG = {
-      WEB_APP_URL: localStorage.getItem("WEB_APP_URL") || ""
+        <!-- Navigation -->
+        <nav class="bg-white shadow-md rounded-lg p-4 mb-8 flex space-x-2 md:space-x-4">
+            <button data-view="scan" class="nav-btn flex-1 text-center py-3 px-4 rounded-md bg-blue-500 text-white font-semibold">เริ่มเช็คชื่อ</button>
+            <button data-view="manage" class="nav-btn flex-1 text-center py-3 px-4 rounded-md bg-gray-200 text-gray-700 font-semibold">จัดการข้อมูลนักเรียน</button>
+            <button data-view="dashboard" class="nav-btn flex-1 text-center py-3 px-4 rounded-md bg-gray-200 text-gray-700 font-semibold">แดชบอร์ดและสถิติ</button>
+        </nav>
+
+        <!-- Main Content -->
+        <main id="main-content">
+            <!-- Scan View -->
+            <div id="scan-view" class="view-content">
+                <div class="bg-white p-6 rounded-lg shadow-md">
+                    <h2 class="text-2xl font-bold mb-4">สแกนใบหน้าเพื่อเช็คชื่อ</h2>
+                    <div id="video-container" class="w-full max-w-2xl mx-auto aspect-video bg-gray-900 rounded-lg overflow-hidden mb-4">
+                        <video id="video" width="720" height="560" autoplay muted></video>
+                        <canvas id="canvas"></canvas>
+                    </div>
+                     <div id="scan-log" class="mt-4 p-4 bg-gray-50 rounded-lg h-40 overflow-y-auto">
+                        <p class="text-gray-500">ผลการสแกนจะแสดงที่นี่...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Manage View -->
+            <div id="manage-view" class="view-content hidden">
+                 <div class="bg-white p-6 rounded-lg shadow-md">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-2xl font-bold">รายชื่อนักเรียน</h2>
+                        <button id="add-student-btn" class="bg-green-500 text-white px-6 py-2 rounded-md hover:bg-green-600">เพิ่มนักเรียน</button>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left">
+                            <thead class="bg-gray-100">
+                                <tr>
+                                    <th class="p-3">รหัสนักเรียน</th>
+                                    <th class="p-3">ชื่อ-สกุล</th>
+                                    <th class="p-3">ชั้น</th>
+                                    <th class="p-3">จัดการ</th>
+                                </tr>
+                            </thead>
+                            <tbody id="student-table-body">
+                                <!-- Data will be populated here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dashboard View -->
+            <div id="dashboard-view" class="view-content hidden">
+                <div class="bg-white p-6 rounded-lg shadow-md">
+                     <h2 class="text-2xl font-bold mb-4">สถิติการเข้าเรียน</h2>
+                     <div class="flex items-center space-x-4 mb-6">
+                        <label for="report-date" class="font-semibold">เลือกวันที่:</label>
+                        <input type="date" id="report-date" class="p-2 border rounded-md">
+                     </div>
+                     <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                         <div>
+                             <h3 class="text-xl font-semibold mb-2 text-center">สรุปการเข้าเรียนรายวัน</h3>
+                             <canvas id="daily-chart"></canvas>
+                         </div>
+                         <div>
+                             <h3 class="text-xl font-semibold mb-2">รายชื่อนักเรียน</h3>
+                             <div class="grid grid-cols-3 gap-4 font-semibold text-center mb-2">
+                                 <div class="text-green-600">มาเรียน</div>
+                                 <div class="text-orange-500">มาสาย</div>
+                                 <div class="text-red-600">ขาดเรียน</div>
+                             </div>
+                             <div class="grid grid-cols-3 gap-4 h-96 overflow-y-auto">
+                                 <div id="present-list" class="space-y-1"></div>
+                                 <div id="late-list" class="space-y-1"></div>
+                                 <div id="absent-list" class="space-y-1"></div>
+                             </div>
+                         </div>
+                     </div>
+                </div>
+            </div>
+        </main>
+    </div>
+    
+    <!-- Student Modal -->
+    <div id="student-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50 hidden">
+        <div class="bg-white p-8 rounded-lg shadow-xl w-full max-w-lg">
+            <h2 id="modal-title" class="text-2xl font-bold mb-6">เพิ่มข้อมูลนักเรียน</h2>
+            <form id="student-form">
+                <input type="hidden" id="student-row-index">
+                <div class="mb-4">
+                    <label for="student-id" class="block mb-2 font-semibold">รหัสนักเรียน</label>
+                    <input type="text" id="student-id" class="w-full p-2 border rounded-md" required>
+                </div>
+                <div class="mb-4">
+                    <label for="student-name" class="block mb-2 font-semibold">ชื่อ-สกุล</label>
+                    <input type="text" id="student-name" class="w-full p-2 border rounded-md" required>
+                </div>
+                 <div class="mb-4">
+                    <label for="student-class" class="block mb-2 font-semibold">ชั้น</label>
+                    <input type="text" id="student-class" class="w-full p-2 border rounded-md" required>
+                </div>
+                <div class="mb-6">
+                    <label for="student-image" class="block mb-2 font-semibold">อัปโหลดรูปภาพใบหน้า</label>
+                    <input type="file" id="student-image" accept="image/*" class="w-full p-2 border rounded-md">
+                    <p class="text-sm text-gray-500 mt-1">รูปถ่ายหน้าตรง ไม่สวมแว่นตาหรือหมวก</p>
+                </div>
+                <div class="flex justify-end space-x-4">
+                    <button type="button" id="cancel-btn" class="bg-gray-300 px-6 py-2 rounded-md">ยกเลิก</button>
+                    <button type="submit" id="save-student-btn" class="bg-blue-500 text-white px-6 py-2 rounded-md">บันทึก</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Loading Spinner -->
+    <div id="loading-overlay" class="fixed inset-0 bg-white bg-opacity-80 flex flex-col items-center justify-center z-[100] hidden">
+        <div class="loader"></div>
+        <p id="loading-text" class="mt-4 text-lg font-semibold text-gray-700">กำลังโหลด...</p>
+    </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    let WEB_APP_URL = '';
+    const MODEL_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
+
+    const configModal = document.getElementById('config-modal');
+    const appContainer = document.getElementById('app-container');
+    const webAppUrlInput = document.getElementById('web-app-url-input');
+    const saveConfigBtn = document.getElementById('save-config-btn');
+    const resetConfigBtn = document.getElementById('reset-config-btn');
+    
+    const loadingOverlay = document.getElementById('loading-overlay');
+    const loadingText = document.getElementById('loading-text');
+
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    
+    const studentModal = document.getElementById('student-modal');
+    const studentForm = document.getElementById('student-form');
+    
+    let labeledFaceDescriptors = null;
+    let faceMatcher = null;
+    let studentsData = [];
+    let dailyChartInstance = null;
+    let checkInInterval = null;
+    const checkedInToday = new Set();
+
+
+    // --- Core Functions ---
+    const showLoading = (text = 'กำลังโหลด...') => {
+        loadingText.innerText = text;
+        loadingOverlay.classList.remove('hidden');
     };
+    const hideLoading = () => loadingOverlay.classList.add('hidden');
 
-    // ถ้ามีค่าแล้ว แสดง App เลย
-    window.onload = () => {
-      if (CONFIG.WEB_APP_URL) {
-        document.getElementById("webAppUrl").value = CONFIG.WEB_APP_URL;
-        document.getElementById("main-app").style.display = "block";
-      }
-    };
-
-    // ฟังก์ชันบันทึกค่า config
-    function saveConfig() {
-      const url = document.getElementById("webAppUrl").value.trim();
-      if (!url) {
-        alert("กรุณากรอก URL ก่อน!");
-        return;
-      }
-      localStorage.setItem("WEB_APP_URL", url);
-      CONFIG.WEB_APP_URL = url;
-      document.getElementById("main-app").style.display = "block";
-      alert("บันทึก Config เรียบร้อย ✅");
+    async function callGoogleScript(action, payload = {}) {
+        try {
+            const response = await fetch(WEB_APP_URL, {
+                method: 'POST',
+                mode: 'cors',
+                credentials: 'omit',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({ action, payload })
+            });
+            const result = await response.json();
+            if(result.status === 'error'){
+                throw new Error(result.message);
+            }
+            return result.data;
+        } catch (error) {
+            console.error('Error calling Google Script:', error);
+            Swal.fire({
+                icon: 'error',
+                title: 'เกิดข้อผิดพลาด',
+                text: `ไม่สามารถเชื่อมต่อกับ Google Sheet ได้: ${error.message}`
+            });
+            return null;
+        }
+    }
+    
+    // --- Config Management ---
+    function checkConfig() {
+        WEB_APP_URL = localStorage.getItem('webAppUrl');
+        if (!WEB_APP_URL) {
+            configModal.classList.remove('hidden');
+            appContainer.classList.add('hidden');
+        } else {
+            configModal.classList.add('hidden');
+            appContainer.classList.remove('hidden');
+            initializeApp();
+        }
     }
 
-    // ฟังก์ชันรีเซ็ตค่า config
-    function resetConfig() {
-      if (confirm("คุณแน่ใจหรือไม่ที่จะรีเซ็ตค่า Config?")) {
-        localStorage.removeItem("WEB_APP_URL");
-        CONFIG.WEB_APP_URL = "";
-        document.getElementById("webAppUrl").value = "";
-        document.getElementById("main-app").style.display = "none";
-        alert("รีเซ็ตค่าเรียบร้อย ❌ กรุณากรอก URL ใหม่");
-      }
+    saveConfigBtn.addEventListener('click', () => {
+        const url = webAppUrlInput.value.trim();
+        if (url) {
+            localStorage.setItem('webAppUrl', url);
+            checkConfig();
+        } else {
+            Swal.fire('ข้อผิดพลาด', 'กรุณากรอก Web App URL', 'error');
+        }
+    });
+
+    resetConfigBtn.addEventListener('click', () => {
+        localStorage.removeItem('webAppUrl');
+        location.reload();
+    });
+
+    // --- App Initialization ---
+    async function initializeApp() {
+        showLoading('กำลังโหลดโมเดลใบหน้า...');
+        await Promise.all([
+            faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL),
+            faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+            faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+        ]);
+        showLoading('กำลังโหลดข้อมูลนักเรียน...');
+        await loadStudentsAndPrepareMatcher();
+        hideLoading();
+        
+        document.querySelector('.nav-btn[data-view="scan"]').click();
+    }
+    
+    // --- View Navigation ---
+    const navButtons = document.querySelectorAll('.nav-btn');
+    const views = document.querySelectorAll('.view-content');
+
+    navButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const viewId = btn.dataset.view;
+            
+            navButtons.forEach(b => {
+                b.classList.remove('bg-blue-500', 'text-white');
+                b.classList.add('bg-gray-200', 'text-gray-700');
+            });
+            btn.classList.add('bg-blue-500', 'text-white');
+            btn.classList.remove('bg-gray-200', 'text-gray-700');
+            
+            views.forEach(v => v.classList.add('hidden'));
+            document.getElementById(`${viewId}-view`).classList.remove('hidden');
+
+            if (viewId === 'scan') {
+                startVideo();
+            } else {
+                stopVideo();
+            }
+
+            if(viewId === 'manage') loadStudentsTable();
+            if(viewId === 'dashboard') loadDashboard();
+        });
+    });
+
+    // --- Face Recognition Logic ---
+    function startVideo() {
+        checkedInToday.clear();
+        document.getElementById('scan-log').innerHTML = '<p class="text-gray-500">ผลการสแกนจะแสดงที่นี่...</p>';
+
+        navigator.mediaDevices.getUserMedia({ video: {} })
+            .then(stream => {
+                video.srcObject = stream;
+            })
+            .catch(err => console.error(err));
+    }
+    
+    function stopVideo() {
+        if (video.srcObject) {
+            video.srcObject.getTracks().forEach(track => track.stop());
+        }
+        clearInterval(checkInInterval);
     }
 
-    // ตัวอย่างการดึงนักเรียนจาก Apps Script
-    async function loadStudents() {
-      try {
-        const res = await fetch(`${CONFIG.WEB_APP_URL}?action=getStudents`);
-        const data = await res.json();
-        document.getElementById("output").innerHTML =
-          "<h3>รายชื่อนักเรียน</h3><pre>" + JSON.stringify(data, null, 2) + "</pre>";
-      } catch (err) {
-        alert("❌ โหลดข้อมูลนักเรียนไม่สำเร็จ: " + err);
-      }
+    video.addEventListener('play', () => {
+        const displaySize = { width: video.width, height: video.height };
+        faceapi.matchDimensions(canvas, displaySize);
+
+        checkInInterval = setInterval(async () => {
+            if(!faceMatcher) return;
+
+            const detections = await faceapi.detectAllFaces(video).withFaceLandmarks().withFaceDescriptors();
+            const resizedDetections = faceapi.resizeResults(detections, displaySize);
+            
+            canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+            faceapi.draw.drawDetections(canvas, resizedDetections);
+
+            const results = resizedDetections.map(d => faceMatcher.findBestMatch(d.descriptor));
+            
+            results.forEach((result, i) => {
+                const box = resizedDetections[i].detection.box;
+                const drawBox = new faceapi.draw.DrawBox(box, { label: result.toString() });
+                drawBox.draw(canvas);
+                
+                if (result.label !== 'unknown' && !checkedInToday.has(result.label)) {
+                    checkedInToday.add(result.label);
+                    handleSuccessfulScan(result.label);
+                }
+            });
+        }, 300);
+    });
+
+    async function handleSuccessfulScan(studentId) {
+        const student = studentsData.find(s => s.id === studentId);
+        if(!student) return;
+
+        const logDiv = document.getElementById('scan-log');
+        const timestamp = new Date().toLocaleTimeString('th-TH');
+        const logEntry = document.createElement('p');
+        logEntry.className = 'text-green-600 font-semibold';
+        logEntry.textContent = `[${timestamp}] เช็คชื่อสำเร็จ: ${student.name} (${student.id})`;
+        logDiv.prepend(logEntry);
+        
+        const audio = new Audio(`https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent('สวัสดี ' + student.name)}&tl=th&client=tw-ob`);
+        audio.play();
+
+        showLoading('กำลังบันทึกข้อมูล...');
+        await callGoogleScript('recordAttendance', { id: student.id, name: student.name });
+        hideLoading();
+    }
+    
+    async function loadStudentsAndPrepareMatcher() {
+        const data = await callGoogleScript('getStudents');
+        if (!data) return;
+        
+        studentsData = data.map(row => ({ id: row[0], name: row[1], class: row[2], image: row[3] }));
+        
+        const descriptors = [];
+        for (const student of studentsData) {
+            if (student.image) {
+                try {
+                    const img = await faceapi.fetchImage(student.image);
+                    const detection = await faceapi.detectSingleFace(img).withFaceLandmarks().withFaceDescriptor();
+                    if(detection) {
+                        descriptors.push(new faceapi.LabeledFaceDescriptors(student.id, [detection.descriptor]));
+                    }
+                } catch (e) {
+                    console.error(`Could not process image for ${student.name}`, e);
+                }
+            }
+        }
+        
+        if (descriptors.length > 0) {
+            labeledFaceDescriptors = descriptors;
+            faceMatcher = new faceapi.FaceMatcher(labeledFaceDescriptors, 0.55); // Adjust threshold if needed
+        } else {
+            faceMatcher = null;
+        }
     }
 
-    // ตัวอย่างการดึงรายงานสถิติ
-    async function loadReport() {
-      try {
-        const res = await fetch(`${CONFIG.WEB_APP_URL}?action=getAttendanceReport`);
-        const data = await res.json();
-        document.getElementById("output").innerHTML =
-          "<h3>รายงานสถิติ</h3><pre>" + JSON.stringify(data, null, 2) + "</pre>";
-      } catch (err) {
-        alert("❌ โหลดรายงานไม่สำเร็จ: " + err);
-      }
+
+    // --- Student Management ---
+    document.getElementById('add-student-btn').addEventListener('click', () => openStudentModal());
+
+    function openStudentModal(student = null, rowIndex = null) {
+        studentForm.reset();
+        document.getElementById('student-row-index').value = rowIndex !== null ? rowIndex : '';
+        if(student) {
+            document.getElementById('modal-title').innerText = 'แก้ไขข้อมูลนักเรียน';
+            document.getElementById('student-id').value = student.id;
+            document.getElementById('student-id').readOnly = true;
+            document.getElementById('student-name').value = student.name;
+            document.getElementById('student-class').value = student.class;
+        } else {
+            document.getElementById('modal-title').innerText = 'เพิ่มข้อมูลนักเรียน';
+            document.getElementById('student-id').readOnly = false;
+        }
+        studentModal.classList.remove('hidden');
     }
-  </script>
+    
+    document.getElementById('cancel-btn').addEventListener('click', () => {
+        studentModal.classList.add('hidden');
+    });
+
+    studentForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const student = {
+            rowIndex: document.getElementById('student-row-index').value,
+            id: document.getElementById('student-id').value,
+            name: document.getElementById('student-name').value,
+            class: document.getElementById('student-class').value,
+            image: null
+        };
+        
+        const imageFile = document.getElementById('student-image').files[0];
+
+        if (!student.rowIndex && !imageFile) {
+            Swal.fire('ข้อผิดพลาด', 'กรุณาอัปโหลดรูปภาพสำหรับนักเรียนใหม่', 'error');
+            return;
+        }
+
+        showLoading('กำลังบันทึกข้อมูล...');
+
+        if (imageFile) {
+            student.image = await toBase64(imageFile);
+        }
+
+        const action = student.rowIndex ? 'updateStudent' : 'addStudent';
+        const result = await callGoogleScript(action, student);
+        
+        if (result) {
+            studentModal.classList.add('hidden');
+            await loadStudentsAndPrepareMatcher(); // Reload all data
+            await loadStudentsTable();
+            Swal.fire('สำเร็จ', 'บันทึกข้อมูลเรียบร้อย', 'success');
+        }
+        hideLoading();
+    });
+
+    const toBase64 = file => new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = error => reject(error);
+    });
+
+    async function loadStudentsTable() {
+        showLoading('กำลังโหลดตาราง...');
+        const tableBody = document.getElementById('student-table-body');
+        tableBody.innerHTML = '';
+        
+        // Use already loaded data if available
+        if (studentsData.length === 0) {
+            await loadStudentsAndPrepareMatcher();
+        }
+
+        studentsData.forEach((student, index) => {
+            const row = document.createElement('tr');
+            row.className = 'border-b';
+            row.innerHTML = `
+                <td class="p-3">${student.id}</td>
+                <td class="p-3">${student.name}</td>
+                <td class="p-3">${student.class}</td>
+                <td class="p-3">
+                    <button class="edit-btn bg-blue-100 text-blue-700 px-3 py-1 rounded text-sm" data-index="${index}">แก้ไข</button>
+                    <button class="delete-btn bg-red-100 text-red-700 px-3 py-1 rounded text-sm ml-2" data-id="${student.id}" data-rowindex="${index + 2}">ลบ</button>
+                </td>
+            `;
+            tableBody.appendChild(row);
+        });
+
+        document.querySelectorAll('.edit-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const index = e.target.dataset.index;
+                const rowIndex = parseInt(index) + 2; // +2 for header and 1-based index
+                openStudentModal(studentsData[index], rowIndex);
+            });
+        });
+
+        document.querySelectorAll('.delete-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const id = e.target.dataset.id;
+                const rowIndex = e.target.dataset.rowindex;
+                Swal.fire({
+                    title: `ต้องการลบ ${id}?`,
+                    text: "ข้อมูลนี้จะถูกลบอย่างถาวร!",
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonColor: '#d33',
+                    cancelButtonColor: '#3085d6',
+                    confirmButtonText: 'ใช่, ลบเลย!',
+                    cancelButtonText: 'ยกเลิก'
+                }).then(async (result) => {
+                    if (result.isConfirmed) {
+                        showLoading('กำลังลบข้อมูล...');
+                        await callGoogleScript('deleteStudent', { rowIndex });
+                        await loadStudentsAndPrepareMatcher();
+                        await loadStudentsTable();
+                        hideLoading();
+                        Swal.fire('ลบแล้ว!', 'ข้อมูลนักเรียนถูกลบเรียบร้อย', 'success');
+                    }
+                })
+            });
+        });
+        hideLoading();
+    }
+    
+    // --- Dashboard Logic ---
+    const reportDateInput = document.getElementById('report-date');
+    reportDateInput.valueAsDate = new Date();
+    reportDateInput.addEventListener('change', loadDashboard);
+    
+    async function loadDashboard() {
+        showLoading('กำลังโหลดสถิติ...');
+        const date = reportDateInput.value;
+        const data = await callGoogleScript('getAttendanceStats', { date });
+        hideLoading();
+        
+        if (data) {
+            renderDashboard(data);
+        }
+    }
+
+    function renderDashboard(data) {
+        // Render Chart
+        const ctx = document.getElementById('daily-chart').getContext('2d');
+        const chartData = {
+            labels: ['มาเรียน', 'มาสาย', 'ขาดเรียน'],
+            datasets: [{
+                label: 'จำนวนนักเรียน',
+                data: [data.present.length, data.late.length, data.absent.length],
+                backgroundColor: ['#10B981', '#F59E0B', '#EF4444'],
+            }]
+        };
+
+        if (dailyChartInstance) {
+            dailyChartInstance.destroy();
+        }
+        
+        dailyChartInstance = new Chart(ctx, {
+            type: 'pie',
+            data: chartData,
+            options: {
+                responsive: true,
+                plugins: { legend: { position: 'top' } }
+            }
+        });
+        
+        // Render Lists
+        const renderList = (elementId, list) => {
+            const container = document.getElementById(elementId);
+            container.innerHTML = list.map(item => `<div class="p-2 bg-gray-100 rounded">${item.name} (${item.id})</div>`).join('');
+        };
+
+        renderList('present-list', data.present);
+        renderList('late-list', data.late);
+        renderList('absent-list', data.absent);
+    }
+
+    // --- Initial Load ---
+    checkConfig();
+});
+</script>
 </body>
 </html>

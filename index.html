@@ -37,6 +37,9 @@
             <div class="flex justify-between items-center">
                 <div><h1 class="text-3xl font-bold text-blue-600">ระบบเช็คชื่อด้วยใบหน้า</h1></div>
                 <div class="flex items-center space-x-4">
+                    <button id="test-sound-btn" class="bg-indigo-500 text-white p-2 rounded-full hover:bg-indigo-600" title="Test Sound">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
+                    </button>
                     <button id="manage-data-btn" class="bg-green-500 text-white px-4 py-2 rounded-md hover:bg-green-600">จัดการข้อมูลนักเรียน</button>
                     <button id="reset-config-btn" class="bg-yellow-500 text-white px-4 py-2 rounded-md hover:bg-yellow-600 text-sm">Reset URL</button>
                 </div>
@@ -84,7 +87,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const statusIndicator = document.getElementById('status-indicator');
     const toggleScanBtn = document.getElementById('toggle-scan-btn');
     const cameraPlaceholder = document.getElementById('camera-placeholder');
-    // ... other modal elements
+    const testSoundBtn = document.getElementById('test-sound-btn');
     const studentListModal = document.getElementById('student-list-modal');
     const studentModal = document.getElementById('student-modal');
     const studentForm = document.getElementById('student-form');
@@ -100,7 +103,23 @@ document.addEventListener('DOMContentLoaded', () => {
     const showLoading = (text = 'กำลังโหลด...') => { loadingText.innerText = text; loadingOverlay.classList.remove('hidden'); };
     const hideLoading = () => loadingOverlay.classList.add('hidden');
     const setStatus = (text, colorClass) => { statusIndicator.textContent = text; statusIndicator.className = `absolute top-4 right-4 text-white bg-${colorClass}-500 bg-opacity-80 px-3 py-1 rounded-full text-sm z-10`; statusIndicator.classList.remove('hidden');};
-    function speak(text) { if ('speechSynthesis' in window) { window.speechSynthesis.cancel(); const utterance = new SpeechSynthesisUtterance(text); utterance.lang = 'th-TH'; utterance.rate = 0.9; window.speechSynthesis.speak(utterance); } }
+    
+    function speak(text) {
+        console.log(`[Speak Function Called] Attempting to say: "${text}"`);
+        if ('speechSynthesis' in window) {
+            window.speechSynthesis.cancel();
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'th-TH';
+            utterance.rate = 0.9;
+            utterance.onerror = (event) => {
+                console.error('SpeechSynthesisUtterance.onerror', event);
+            };
+            window.speechSynthesis.speak(utterance);
+            console.log('[Speak Function] Utterance sent to browser.');
+        } else {
+            console.error('Speech Synthesis not supported in this browser.');
+        }
+    }
 
     async function callGoogleScript(action, payload = {}) {
         try {
@@ -116,13 +135,24 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     
-    // --- App & Camera Control ---
+    // --- Event Listeners ---
     toggleScanBtn.addEventListener('click', () => {
         if (isCameraActive) {
             stopScanning();
         } else {
             startScanning();
         }
+    });
+
+    testSoundBtn.addEventListener('click', () => {
+        speak('ทดสอบเสียงพูดภาษาไทย');
+        Swal.fire({
+            title: 'กำลังทดสอบเสียง',
+            text: 'คุณควรจะได้ยินเสียงพูดว่า "ทดสอบเสียงพูดภาษาไทย"',
+            icon: 'info',
+            timer: 3000,
+            showConfirmButton: false
+        });
     });
 
     function startScanning() {

@@ -99,23 +99,29 @@ document.addEventListener('DOMContentLoaded', () => {
     const checkedInToday = new Set();
     let isScanningPaused = false;
     let isCameraActive = false;
+    let speechSynthesisInitialized = false;
 
     const showLoading = (text = 'กำลังโหลด...') => { loadingText.innerText = text; loadingOverlay.classList.remove('hidden'); };
     const hideLoading = () => loadingOverlay.classList.add('hidden');
     const setStatus = (text, colorClass) => { statusIndicator.textContent = text; statusIndicator.className = `absolute top-4 right-4 text-white bg-${colorClass}-500 bg-opacity-80 px-3 py-1 rounded-full text-sm z-10`; statusIndicator.classList.remove('hidden');};
     
+    function initSpeechSynthesis() {
+        if (speechSynthesisInitialized || !('speechSynthesis' in window)) return;
+        // This is a trick to "unlock" the Speech Synthesis API on some browsers.
+        // It must be called once as a result of a direct user action (like a click).
+        const utterance = new SpeechSynthesisUtterance('');
+        window.speechSynthesis.speak(utterance);
+        speechSynthesisInitialized = true;
+        console.log('Speech Synthesis Initialized by user gesture.');
+    }
+
     function speak(text) {
-        console.log(`[Speak Function Called] Attempting to say: "${text}"`);
         if ('speechSynthesis' in window) {
             window.speechSynthesis.cancel();
             const utterance = new SpeechSynthesisUtterance(text);
             utterance.lang = 'th-TH';
             utterance.rate = 0.9;
-            utterance.onerror = (event) => {
-                console.error('SpeechSynthesisUtterance.onerror', event);
-            };
             window.speechSynthesis.speak(utterance);
-            console.log('[Speak Function] Utterance sent to browser.');
         } else {
             console.error('Speech Synthesis not supported in this browser.');
         }
@@ -145,6 +151,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     testSoundBtn.addEventListener('click', () => {
+        initSpeechSynthesis(); // Ensure it's unlocked before testing
         speak('ทดสอบเสียงพูดภาษาไทย');
         Swal.fire({
             title: 'กำลังทดสอบเสียง',
@@ -156,6 +163,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     function startScanning() {
+        initSpeechSynthesis(); // This is the key fix: unlock audio on click.
         isCameraActive = true;
         toggleScanBtn.innerText = 'หยุดสแกน';
         toggleScanBtn.classList.remove('bg-blue-600', 'hover:bg-blue-700');

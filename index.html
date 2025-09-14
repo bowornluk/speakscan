@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ระบบเช็คชื่อด้วยใบหน้า V3 (สมบูรณ์)</title>
+    <title>ระบบเช็คชื่อด้วยใบหน้า V3.2 (สลับกล้อง)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
@@ -55,10 +55,15 @@
                             <p class="text-gray-400 mt-2">กด "เริ่มสแกน" เพื่อเปิดกล้อง</p>
                         </div>
                         <div id="status-indicator" class="absolute top-4 right-4 text-white bg-black bg-opacity-50 px-3 py-1 rounded-full text-sm z-10 hidden"></div>
-                        <video id="video" width="720" height="560" autoplay muted class="hidden"></video>
+                        <video id="video" width="720" height="560" autoplay muted playsinline class="hidden"></video>
                         <canvas id="canvas"></canvas>
                     </div>
-                    <div class="text-center mb-4"><button id="toggle-scan-btn" class="bg-blue-600 text-white px-8 py-3 rounded-full hover:bg-blue-700 text-lg font-semibold disabled:bg-gray-400 disabled:cursor-not-allowed">เริ่มสแกน</button></div>
+                    <div class="flex justify-center items-center gap-4 mb-4">
+                        <button id="toggle-scan-btn" class="bg-blue-600 text-white px-8 py-3 rounded-full hover:bg-blue-700 text-lg font-semibold disabled:bg-gray-400 disabled:cursor-not-allowed">เริ่มสแกน</button>
+                        <button id="switch-camera-btn" class="bg-gray-500 text-white p-3 rounded-full hover:bg-gray-600 hidden" title="สลับกล้อง">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6"><path d="M11 19H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h5"/><path d="M13 5H20a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2h-5"/><path d="m18 15-4-4 4-4"/><path d="m6 9 4 4-4 4"/></svg>
+                        </button>
+                    </div>
                     <div id="scan-log" class="mt-4 p-4 bg-gray-50 rounded-lg h-48 overflow-y-auto border"><p class="text-gray-500">ผลการสแกนจะแสดงที่นี่...</p></div>
                 </div>
             </div>
@@ -78,9 +83,7 @@
                             <input type="date" id="dashboard-date" class="border rounded-md p-2">
                          </div>
                     </div>
-                    <div id="dashboard-grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-                        <!-- Student cards will be inserted here -->
-                    </div>
+                    <div id="dashboard-grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6"></div>
                      <div id="dashboard-placeholder" class="text-center py-16 hidden">
                         <svg xmlns="http://www.w3.org/2000/svg" class="mx-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
                          <p id="dashboard-placeholder-text" class="text-gray-500 mt-4 text-lg">ไม่พบข้อมูลการเข้าเรียนในช่วงเวลาที่เลือก</p>
@@ -107,6 +110,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const checkedInToday = new Set();
     let isScanningPaused = false;
     let isCameraActive = false;
+    let speechSynthesisInitialized = false;
+    // **NEW:** Camera selection state
+    let videoDevices = [];
+    let currentCameraIndex = 0;
     
     // --- DOM ELEMENTS ---
     const appContainer = document.getElementById('app-container');
@@ -115,6 +122,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const video = document.getElementById('video');
     const canvas = document.getElementById('canvas');
     const toggleScanBtn = document.getElementById('toggle-scan-btn');
+    const switchCameraBtn = document.getElementById('switch-camera-btn');
     const scanView = document.getElementById('scan-view');
     const dashboardView = document.getElementById('dashboard-view');
     const tabScan = document.getElementById('tab-scan');
@@ -125,6 +133,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- UTILITY FUNCTIONS ---
     const showLoading = (text = 'กำลังโหลด...') => { loadingText.innerText = text; loadingOverlay.classList.remove('hidden'); };
     const hideLoading = () => loadingOverlay.classList.add('hidden');
+    function initSpeechSynthesis() { if (speechSynthesisInitialized || !('speechSynthesis' in window)) return; const utterance = new SpeechSynthesisUtterance(''); window.speechSynthesis.speak(utterance); speechSynthesisInitialized = true; }
     function speak(text) { if ('speechSynthesis' in window) { window.speechSynthesis.cancel(); const utterance = new SpeechSynthesisUtterance(text); utterance.lang = 'th-TH'; utterance.rate = 0.9; window.speechSynthesis.speak(utterance); } }
     
     // --- API CALL ---
@@ -171,30 +180,21 @@ document.addEventListener('DOMContentLoaded', () => {
         const grid = document.getElementById('dashboard-grid');
         const placeholder = document.getElementById('dashboard-placeholder');
         grid.innerHTML = '';
-
-        let periodLabel = '';
-        let dailyAttendance = [];
-        let periodCounts = {};
-
+        let periodLabel = '', dailyAttendance = [], periodCounts = {};
         const allAttendanceWithDates = allAttendanceData.map(att => ({...att, date: new Date(att.timestamp)}));
 
         if (period === 'day') {
             periodLabel = 'วันนี้';
-            const selectedDateString = selectedDate.toDateString();
-            dailyAttendance = allAttendanceWithDates.filter(att => att.date.toDateString() === selectedDateString);
+            dailyAttendance = allAttendanceWithDates.filter(att => att.date.toDateString() === selectedDate.toDateString());
         } else if (period === 'week') {
             periodLabel = 'สัปดาห์นี้';
             const startOfWeek = new Date(selectedDate);
-            startOfWeek.setDate(selectedDate.getDate() - selectedDate.getDay());
-            startOfWeek.setHours(0,0,0,0);
-            const endOfWeek = new Date(startOfWeek);
-            endOfWeek.setDate(startOfWeek.getDate() + 6);
-            endOfWeek.setHours(23,59,59,999);
+            startOfWeek.setDate(selectedDate.getDate() - selectedDate.getDay()); startOfWeek.setHours(0,0,0,0);
+            const endOfWeek = new Date(startOfWeek); endOfWeek.setDate(startOfWeek.getDate() + 6); endOfWeek.setHours(23,59,59,999);
             dailyAttendance = allAttendanceWithDates.filter(att => att.date >= startOfWeek && att.date <= endOfWeek);
         } else if (period === 'month') {
             periodLabel = 'เดือนนี้';
-            const currentMonth = selectedDate.getMonth();
-            const currentYear = selectedDate.getFullYear();
+            const currentMonth = selectedDate.getMonth(), currentYear = selectedDate.getFullYear();
             dailyAttendance = allAttendanceWithDates.filter(att => att.date.getMonth() === currentMonth && att.date.getFullYear() === currentYear);
         } else if (period === 'year') {
             periodLabel = 'ปีนี้';
@@ -202,42 +202,81 @@ document.addEventListener('DOMContentLoaded', () => {
             dailyAttendance = allAttendanceWithDates.filter(att => att.date.getFullYear() === currentYear);
         }
         
-        periodCounts = dailyAttendance.reduce((acc, att) => {
-            acc[att.id] = (acc[att.id] || 0) + 1;
-            return acc;
-        }, {});
-        
+        periodCounts = dailyAttendance.reduce((acc, att) => { acc[att.id] = (acc[att.id] || 0) + 1; return acc; }, {});
         const uniqueDailyStudentIds = [...new Set(dailyAttendance.map(att => att.id))];
         
-        if (uniqueDailyStudentIds.length === 0) {
-            placeholder.classList.remove('hidden');
-            return;
-        }
+        if (uniqueDailyStudentIds.length === 0) { placeholder.classList.remove('hidden'); return; }
         placeholder.classList.add('hidden');
         
         uniqueDailyStudentIds.forEach(studentId => {
             const student = studentsData.find(s => String(s.id) === String(studentId));
             if (!student) return;
-
             const card = document.createElement('div');
             card.className = "bg-gray-50 rounded-lg p-4 text-center shadow transition hover:shadow-lg";
             card.innerHTML = `
                 <img src="${student.imageData || 'https://placehold.co/150x150/e2e8f0/475569?text=No+Image'}" class="w-32 h-32 rounded-full object-cover mx-auto mb-4 border-4 border-white shadow-md">
                 <h3 class="font-bold text-lg">${student.name}</h3>
                 <p class="text-gray-500 text-sm mb-3">${student.class}</p>
-                <div class="bg-blue-100 text-blue-800 rounded-full px-3 py-1">
-                    มาเรียน${periodLabel}: <span class="font-bold">${periodCounts[student.id] || 0}</span> ครั้ง
-                </div>
-            `;
+                <div class="bg-blue-100 text-blue-800 rounded-full px-3 py-1">มาเรียน${periodLabel}: <span class="font-bold">${periodCounts[student.id] || 0}</span> ครั้ง</div>`;
             grid.appendChild(card);
         });
     }
 
-    // --- SCANNING LOGIC ---
+    // --- SCANNING & CAMERA LOGIC ---
+    async function getCameraDevices() {
+        if (!navigator.mediaDevices?.enumerateDevices) return;
+        try {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            videoDevices = devices.filter(device => device.kind === 'videoinput');
+        } catch (err) { console.error("Error enumerating devices:", err); }
+    }
+
+    switchCameraBtn.addEventListener('click', () => {
+        if (videoDevices.length > 1) {
+            currentCameraIndex = (currentCameraIndex + 1) % videoDevices.length;
+            startVideo(); // Restart video with the new camera
+        }
+    });
+
     toggleScanBtn.addEventListener('click', () => { if (isCameraActive) stopScanning(); else startScanning(); });
-    function startScanning() { isCameraActive = true; toggleScanBtn.innerText = 'หยุดสแกน'; toggleScanBtn.classList.remove('bg-blue-600'); toggleScanBtn.classList.add('bg-red-600'); document.getElementById('camera-placeholder').classList.add('hidden'); document.getElementById('video').classList.remove('hidden'); startVideo(); }
-    function stopScanning() { isCameraActive = false; if (checkInInterval) clearInterval(checkInInterval); if (video.srcObject) video.srcObject.getTracks().forEach(track => track.stop()); video.srcObject = null; const context = canvas.getContext('2d'); context.clearRect(0, 0, canvas.width, canvas.height); toggleScanBtn.innerText = 'เริ่มสแกน'; toggleScanBtn.classList.add('bg-blue-600'); toggleScanBtn.classList.remove('bg-red-600'); document.getElementById('status-indicator').classList.add('hidden'); document.getElementById('video').classList.add('hidden'); document.getElementById('camera-placeholder').classList.remove('hidden'); }
-    const startVideo = () => { navigator.mediaDevices.getUserMedia({ video: {} }).then(stream => { video.srcObject = stream; }).catch(err => { Swal.fire('เกิดข้อผิดพลาด', 'ไม่สามารถเข้าถึงกล้องเว็บแคมได้', 'error'); stopScanning(); }); };
+    
+    function startScanning() { 
+        initSpeechSynthesis();
+        isCameraActive = true; 
+        toggleScanBtn.innerText = 'หยุดสแกน'; 
+        toggleScanBtn.classList.remove('bg-blue-600'); 
+        toggleScanBtn.classList.add('bg-red-600'); 
+        if (videoDevices.length > 1) switchCameraBtn.classList.remove('hidden');
+        document.getElementById('camera-placeholder').classList.add('hidden'); 
+        video.classList.remove('hidden'); 
+        startVideo(); 
+    }
+
+    function stopScanning() { 
+        isCameraActive = false; 
+        if (checkInInterval) clearInterval(checkInInterval); 
+        if (video.srcObject) video.srcObject.getTracks().forEach(track => track.stop()); 
+        video.srcObject = null; 
+        const context = canvas.getContext('2d'); 
+        context.clearRect(0, 0, canvas.width, canvas.height); 
+        toggleScanBtn.innerText = 'เริ่มสแกน'; 
+        toggleScanBtn.classList.add('bg-blue-600'); 
+        toggleScanBtn.classList.remove('bg-red-600');
+        switchCameraBtn.classList.add('hidden');
+        document.getElementById('status-indicator').classList.add('hidden'); 
+        document.getElementById('video').classList.add('hidden'); 
+        document.getElementById('camera-placeholder').classList.remove('hidden'); 
+    }
+
+    const startVideo = () => {
+        if (video.srcObject) { video.srcObject.getTracks().forEach(track => track.stop()); }
+        
+        const constraints = { video: { deviceId: videoDevices.length > 0 ? { exact: videoDevices[currentCameraIndex].deviceId } : undefined } };
+        
+        navigator.mediaDevices.getUserMedia(constraints)
+            .then(stream => { video.srcObject = stream; })
+            .catch(err => { Swal.fire('เกิดข้อผิดพลาด', `ไม่สามารถเข้าถึงกล้องได้: ${err.message}`, 'error'); stopScanning(); }); 
+    };
     
     // --- APP INITIALIZATION ---
     async function initializeApp() {
@@ -248,11 +287,13 @@ document.addEventListener('DOMContentLoaded', () => {
             faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
         ]);
         
-        showLoading('กำลังโหลดข้อมูลนักเรียนและสถิติ...');
-        const studentsPromise = callGoogleScript('getStudents');
-        const attendancePromise = callGoogleScript('getAttendance');
+        await getCameraDevices(); // Get camera list on init
         
-        const [studentsResult, attendanceResult] = await Promise.all([studentsPromise, attendancePromise]);
+        showLoading('กำลังโหลดข้อมูลนักเรียนและสถิติ...');
+        const [studentsResult, attendanceResult] = await Promise.all([
+            callGoogleScript('getStudents'),
+            callGoogleScript('getAttendance')
+        ]);
 
         if (studentsResult) {
             studentsData = studentsResult.map(row => ({ id: row[0], name: row[1], class: row[2], faceEncoding: row[3], imageData: row[4] }));
@@ -263,7 +304,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     return new faceapi.LabeledFaceDescriptors(String(student.id), [descriptor]);
                 } catch (e) { return null; }
             }).filter(Boolean);
-
             if (labeledFaceDescriptors.length > 0) {
                 faceMatcher = new faceapi.FaceMatcher(labeledFaceDescriptors, 0.5);
                 toggleScanBtn.disabled = false;
@@ -272,11 +312,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 Swal.fire({ title: 'ยังไม่มีข้อมูลใบหน้า', text: 'กรุณาไปที่ "จัดการข้อมูล" เพื่อเพิ่มนักเรียนก่อนเริ่มสแกน', icon: 'info' });
             }
         }
-        
-        if(attendanceResult) {
-            allAttendanceData = attendanceResult.map(row => ({ id: row[0], name: row[1], timestamp: row[2] }));
-        }
-
+        if(attendanceResult) { allAttendanceData = attendanceResult.map(row => ({ id: row[0], name: row[1], timestamp: row[2] })); }
         hideLoading();
         switchTab('scan');
         dashboardDateInput.valueAsDate = new Date();
@@ -284,7 +320,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // --- FACE RECOGNITION ---
     video.addEventListener('play', () => { 
-        const displaySize = { width: video.width, height: video.height };
+        const displaySize = { width: video.clientWidth, height: video.clientHeight }; // Use clientWidth for responsiveness
         faceapi.matchDimensions(canvas, displaySize);
         if (checkInInterval) clearInterval(checkInInterval);
         checkInInterval = setInterval(async () => {
@@ -312,11 +348,9 @@ document.addEventListener('DOMContentLoaded', () => {
         isScanningPaused = true;
         speak(`สวัสดีค่ะ ${student.name}`);
         document.getElementById('scan-log').innerHTML = `<div class="p-2 mb-2 bg-green-100 text-green-800 rounded-md font-semibold">[${new Date().toLocaleTimeString('th-TH')}] เช็คชื่อสำเร็จ: ${student.name}</div>` + document.getElementById('scan-log').innerHTML;
-        
         const newRecord = { id: student.id, name: student.name, timestamp: new Date().toISOString() };
         allAttendanceData.push(newRecord);
-        await callGoogleScript('recordAttendance', { id: student.id, name: student.name });
-
+        await callGoogleScript('recordAttendance', { payload: newRecord });
         setTimeout(() => { isScanningPaused = false; }, 3000);
     }
     
@@ -326,8 +360,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('add-student-btn').addEventListener('click', () => openStudentModal());
     document.getElementById('cancel-btn').addEventListener('click', () => document.getElementById('student-modal').classList.add('hidden'));
     function openStudentModal(student = null, rowIndex = null) { 
-        const form = document.getElementById('student-form');
-        form.reset();
+        const form = document.getElementById('student-form'); form.reset();
         document.getElementById('student-row-index').value = rowIndex !== null ? rowIndex : '';
         if (student) {
             document.getElementById('modal-title').innerText = 'แก้ไขข้อมูลนักเรียน';
@@ -349,44 +382,25 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!rowIndex && !imageFile) { Swal.fire('ข้อผิดพลาด', 'กรุณาอัปโหลดรูปภาพสำหรับนักเรียนใหม่', 'error'); return; }
 
         showLoading('กำลังประมวลผลใบหน้า...');
-        const student = {
-            rowIndex: rowIndex,
-            id: document.getElementById('student-id').value,
-            name: document.getElementById('student-name').value,
-            class: document.getElementById('student-class').value,
-            faceEncoding: null,
-            imageData: null
-        };
-        
+        const student = { rowIndex: rowIndex, id: document.getElementById('student-id').value, name: document.getElementById('student-name').value, class: document.getElementById('student-class').value, faceEncoding: null, imageData: null };
         if (imageFile) {
             try {
                 const image = await faceapi.bufferToImage(imageFile);
                 const detection = await faceapi.detectSingleFace(image).withFaceLandmarks().withFaceDescriptor();
                 if (!detection) throw new Error('ไม่พบใบหน้าในรูปภาพ!');
                 student.faceEncoding = JSON.stringify(Array.from(detection.descriptor));
-
-                const canvasThumb = document.createElement('canvas');
-                const ctx = canvasThumb.getContext('2d');
-                const MAX_WIDTH = 200;
-                const scale = MAX_WIDTH / image.width;
-                canvasThumb.width = MAX_WIDTH;
-                canvasThumb.height = image.height * scale;
+                const canvasThumb = document.createElement('canvas'), ctx = canvasThumb.getContext('2d'), MAX_WIDTH = 200, scale = MAX_WIDTH / image.width;
+                canvasThumb.width = MAX_WIDTH; canvasThumb.height = image.height * scale;
                 ctx.drawImage(image, 0, 0, canvasThumb.width, canvasThumb.height);
                 student.imageData = canvasThumb.toDataURL('image/jpeg', 0.8);
-
-            } catch(error) {
-                hideLoading();
-                Swal.fire('เกิดข้อผิดพลาด', error.message, 'error');
-                return;
-            }
+            } catch(error) { hideLoading(); Swal.fire('เกิดข้อผิดพลาด', error.message, 'error'); return; }
         }
         showLoading('กำลังบันทึกข้อมูล...');
         const action = student.rowIndex ? 'updateStudent' : 'addStudent';
-        const result = await callGoogleScript(action, student);
+        const result = await callGoogleScript(action, { payload: student });
         if (result) {
             document.getElementById('student-modal').classList.add('hidden');
-            await initializeApp(); 
-            await loadStudentsTable();
+            await initializeApp(); await loadStudentsTable();
             Swal.fire('สำเร็จ', 'บันทึกข้อมูลเรียบร้อย', 'success');
         }
         hideLoading();
@@ -401,8 +415,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const tableStudents = data.map(row => ({ id: row[0], name: row[1], class: row[2] }));
             tableBody.innerHTML = '';
             tableStudents.forEach((student, index) => {
-                const row = document.createElement('tr');
-                row.className = 'border-b';
+                const row = document.createElement('tr'); row.className = 'border-b';
                 row.innerHTML = `<td class="p-3">${student.id}</td><td class="p-3">${student.name}</td><td class="p-3">${student.class}</td><td class="p-3"><button class="edit-btn bg-blue-100 text-blue-700 px-3 py-1 rounded text-sm" data-index="${index}">แก้ไข</button><button class="delete-btn bg-red-100 text-red-700 px-3 py-1 rounded text-sm ml-2" data-rowindex="${index + 2}">ลบ</button></td>`;
                 tableBody.appendChild(row);
             });
@@ -411,9 +424,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 Swal.fire({ title: 'ต้องการลบข้อมูลนี้?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#d33', confirmButtonText: 'ใช่, ลบเลย!'}).then(async (result) => {
                     if (result.isConfirmed) {
                         showLoading('กำลังลบ...');
-                        await callGoogleScript('deleteStudent', { rowIndex: e.target.dataset.rowindex });
-                        await initializeApp();
-                        await loadStudentsTable();
+                        await callGoogleScript('deleteStudent', { payload: { rowIndex: e.target.dataset.rowindex } });
+                        await initializeApp(); await loadStudentsTable();
                         hideLoading();
                     }
                 });

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ระบบเช็คชื่อด้วยใบหน้า V3.2 (สลับกล้อง)</title>
+    <title>ระบบเช็คชื่อด้วยใบหน้า V3.3 (แก้ไขสมบูรณ์)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
@@ -13,7 +13,9 @@
         .loader { border-top-color: #3b82f6; animation: spin 1s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
         #video-container { position: relative; }
-        #video, #canvas { position: absolute; top: 0; left: 0; transform: scaleX(-1); }
+        #video, #canvas { position: absolute; top: 0; left: 0; }
+        /* Default to mirrored for front camera */
+        #video.mirrored, #canvas.mirrored { transform: scaleX(-1); }
         #camera-placeholder svg, #dashboard-placeholder svg { width: 80px; height: 80px; color: #9ca3af; }
         .tab-btn { transition: all 0.2s ease-in-out; }
         .tab-btn-active { background-color: #3b82f6; color: white; }
@@ -55,8 +57,8 @@
                             <p class="text-gray-400 mt-2">กด "เริ่มสแกน" เพื่อเปิดกล้อง</p>
                         </div>
                         <div id="status-indicator" class="absolute top-4 right-4 text-white bg-black bg-opacity-50 px-3 py-1 rounded-full text-sm z-10 hidden"></div>
-                        <video id="video" width="720" height="560" autoplay muted playsinline class="hidden"></video>
-                        <canvas id="canvas"></canvas>
+                        <video id="video" width="720" height="560" autoplay muted playsinline class="hidden mirrored"></video>
+                        <canvas id="canvas" class="mirrored"></canvas>
                     </div>
                     <div class="flex justify-center items-center gap-4 mb-4">
                         <button id="toggle-scan-btn" class="bg-blue-600 text-white px-8 py-3 rounded-full hover:bg-blue-700 text-lg font-semibold disabled:bg-gray-400 disabled:cursor-not-allowed">เริ่มสแกน</button>
@@ -111,7 +113,6 @@ document.addEventListener('DOMContentLoaded', () => {
     let isScanningPaused = false;
     let isCameraActive = false;
     let speechSynthesisInitialized = false;
-    // **NEW:** Camera selection state
     let videoDevices = [];
     let currentCameraIndex = 0;
     
@@ -234,7 +235,7 @@ document.addEventListener('DOMContentLoaded', () => {
     switchCameraBtn.addEventListener('click', () => {
         if (videoDevices.length > 1) {
             currentCameraIndex = (currentCameraIndex + 1) % videoDevices.length;
-            startVideo(); // Restart video with the new camera
+            startVideo(); 
         }
     });
 
@@ -242,6 +243,8 @@ document.addEventListener('DOMContentLoaded', () => {
     
     function startScanning() { 
         initSpeechSynthesis();
+        // **FIX:** Clear the checked-in list every time scanning starts
+        checkedInToday.clear();
         isCameraActive = true; 
         toggleScanBtn.innerText = 'หยุดสแกน'; 
         toggleScanBtn.classList.remove('bg-blue-600'); 
@@ -271,8 +274,19 @@ document.addEventListener('DOMContentLoaded', () => {
     const startVideo = () => {
         if (video.srcObject) { video.srcObject.getTracks().forEach(track => track.stop()); }
         
-        const constraints = { video: { deviceId: videoDevices.length > 0 ? { exact: videoDevices[currentCameraIndex].deviceId } : undefined } };
+        const currentDevice = videoDevices[currentCameraIndex];
+        const constraints = { video: { deviceId: currentDevice ? { exact: currentDevice.deviceId } : undefined } };
         
+        // **FIX:** Adjust video mirroring based on camera direction
+        const isRearCamera = currentDevice?.label.toLowerCase().includes('back');
+        if (isRearCamera) {
+            video.classList.remove('mirrored');
+            canvas.classList.remove('mirrored');
+        } else {
+            video.classList.add('mirrored');
+            canvas.classList.add('mirrored');
+        }
+
         navigator.mediaDevices.getUserMedia(constraints)
             .then(stream => { video.srcObject = stream; })
             .catch(err => { Swal.fire('เกิดข้อผิดพลาด', `ไม่สามารถเข้าถึงกล้องได้: ${err.message}`, 'error'); stopScanning(); }); 
@@ -287,7 +301,7 @@ document.addEventListener('DOMContentLoaded', () => {
             faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
         ]);
         
-        await getCameraDevices(); // Get camera list on init
+        await getCameraDevices(); 
         
         showLoading('กำลังโหลดข้อมูลนักเรียนและสถิติ...');
         const [studentsResult, attendanceResult] = await Promise.all([
@@ -320,7 +334,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // --- FACE RECOGNITION ---
     video.addEventListener('play', () => { 
-        const displaySize = { width: video.clientWidth, height: video.clientHeight }; // Use clientWidth for responsiveness
+        const displaySize = { width: video.clientWidth, height: video.clientHeight }; 
         faceapi.matchDimensions(canvas, displaySize);
         if (checkInInterval) clearInterval(checkInInterval);
         checkInInterval = setInterval(async () => {

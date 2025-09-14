@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ระบบเช็คชื่อด้วยใบหน้า (Optimized)</title>
+    <title>ระบบเช็คชื่อด้วยใบหน้า (Debugging Version)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
@@ -30,7 +30,7 @@
     <div id="app-container" class="container mx-auto p-4 md:p-8 hidden">
         <header class="bg-white shadow-md rounded-lg p-6 mb-8">
             <div class="flex justify-between items-center">
-                <div><h1 class="text-3xl font-bold text-blue-600">ระบบเช็คชื่อด้วยใบหน้า (Optimized)</h1></div>
+                <div><h1 class="text-3xl font-bold text-blue-600">ระบบเช็คชื่อด้วยใบหน้า (Debugging)</h1></div>
                 <div class="flex items-center space-x-4">
                     <button id="manage-data-btn" class="bg-green-500 text-white px-4 py-2 rounded-md hover:bg-green-600">จัดการข้อมูลนักเรียน</button>
                     <button id="reset-config-btn" class="bg-yellow-500 text-white px-4 py-2 rounded-md hover:bg-yellow-600 text-sm">Reset URL</button>
@@ -56,6 +56,7 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', () => {
+    console.log("--- DOCUMENT LOADED ---");
     let WEB_APP_URL = '';
     const MODEL_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
@@ -84,24 +85,32 @@ document.addEventListener('DOMContentLoaded', () => {
     function speak(text) { if ('speechSynthesis' in window) { window.speechSynthesis.cancel(); const utterance = new SpeechSynthesisUtterance(text); utterance.lang = 'th-TH'; utterance.rate = 0.9; window.speechSynthesis.speak(utterance); } }
 
     async function callGoogleScript(action, payload = {}) {
+        console.log(`[callGoogleScript] Action: ${action}`, payload);
         try {
             const response = await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action, payload }) });
-            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            console.log('[callGoogleScript] Response received:', response);
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+            }
             const result = await response.json();
+             console.log('[callGoogleScript] Parsed JSON result:', result);
             if (result.status === 'error') throw new Error(result.message);
             return result.data;
         } catch (error) {
+            console.error('[callGoogleScript] FATAL ERROR:', error);
             Swal.fire('เกิดข้อผิดพลาด', `ไม่สามารถเชื่อมต่อ Google Sheet: ${error.message}. กรุณาตรวจสอบ Console (F12) และ Deploy สคริปต์ใหม่อีกครั้ง`, 'error');
             hideLoading();
             return null;
         }
     }
 
-    const checkConfig = () => { WEB_APP_URL = localStorage.getItem('webAppUrl'); if (!WEB_APP_URL) configModal.classList.remove('hidden'); else { configModal.classList.add('hidden'); appContainer.classList.remove('hidden'); initializeApp(); } };
+    const checkConfig = () => { console.log("Checking config..."); WEB_APP_URL = localStorage.getItem('webAppUrl'); if (!WEB_APP_URL) { console.log("Config not found, showing modal."); configModal.classList.remove('hidden'); } else { console.log("Config found:", WEB_APP_URL); configModal.classList.add('hidden'); appContainer.classList.remove('hidden'); initializeApp(); } };
     document.getElementById('save-config-btn').addEventListener('click', () => { const url = document.getElementById('web-app-url-input').value.trim(); if (url) { localStorage.setItem('webAppUrl', url); checkConfig(); } });
     document.getElementById('reset-config-btn').addEventListener('click', () => { localStorage.removeItem('webAppUrl'); location.reload(); });
 
     async function initializeApp() {
+        console.log("--- Initializing App ---");
         showLoading('กำลังโหลดโมเดล AI...');
         setStatus('กำลังโหลดโมเดล...', 'yellow');
         await Promise.all([
@@ -109,39 +118,56 @@ document.addEventListener('DOMContentLoaded', () => {
             faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
             faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
         ]);
+        console.log("AI Models loaded.");
         await loadStudentsAndBuildMatcher();
         hideLoading();
         startVideo();
     }
 
     async function loadStudentsAndBuildMatcher() {
+        console.log("--- Loading Students & Building Matcher ---");
         showLoading('กำลังโหลดข้อมูลนักเรียน...');
         setStatus('โหลดข้อมูล...', 'yellow');
         const data = await callGoogleScript('getStudents');
-        if (!data) { setStatus('เชื่อมต่อไม่ได้', 'red'); return; }
+        
+        console.log("STEP 1: Data received from Google Sheet:", data);
+        if (!data) { setStatus('เชื่อมต่อไม่ได้', 'red'); console.error("STEP 1 FAILED: No data received."); return; }
+        if (!Array.isArray(data)) { setStatus('ข้อมูลผิดพลาด', 'red'); console.error("STEP 1 FAILED: Data is not an array."); return; }
+
 
         studentsData = data.map(row => ({ id: row[0], name: row[1], class: row[2], faceEncoding: row[3] }));
+        console.log("STEP 2: Mapped studentsData object:", studentsData);
+
         const labeledFaceDescriptors = studentsData.map(student => {
-            if (!student.faceEncoding || !student.faceEncoding.startsWith('[')) return null;
+            console.log(`Processing student ID: ${student.id}, Encoding available: ${!!student.faceEncoding}`);
+            if (!student.faceEncoding || typeof student.faceEncoding !== 'string' || !student.faceEncoding.startsWith('[')) {
+                console.warn(`--> SKIPPING: Invalid encoding for student ${student.id}`);
+                return null;
+            }
             try {
                 const descriptor = new Float32Array(JSON.parse(student.faceEncoding));
-                return new faceapi.LabeledFaceDescriptors(student.id, [descriptor]); // Use ID as label
-            } catch (e) { console.error(`Could not parse encoding for student ID ${student.id}`); return null; }
+                return new faceapi.LabeledFaceDescriptors(String(student.id), [descriptor]);
+            } catch (e) { console.error(`--> ERROR: Could not parse encoding for student ID ${student.id}`, e); return null; }
         }).filter(Boolean);
+        
+        console.log("STEP 3: LabeledFaceDescriptors created:", labeledFaceDescriptors);
 
         if (labeledFaceDescriptors.length > 0) {
-            faceMatcher = new faceapi.FaceMatcher(labeledFaceDescriptors, 0.5); // Stricter threshold
+            faceMatcher = new faceapi.FaceMatcher(labeledFaceDescriptors, 0.5);
             setStatus('พร้อมสแกน', 'green');
+            console.log("STEP 4 SUCCESS: FaceMatcher created successfully.", faceMatcher);
         } else {
             faceMatcher = null;
             setStatus('! ไม่พบข้อมูลใบหน้า', 'red');
+            console.error("STEP 4 FAILED: No valid descriptors found to create FaceMatcher.");
         }
         hideLoading();
     }
 
-    const startVideo = () => { navigator.mediaDevices.getUserMedia({ video: {} }).then(stream => { video.srcObject = stream; }).catch(err => { setStatus('! ไม่สามารถเปิดกล้อง', 'red'); Swal.fire('เกิดข้อผิดพลาด', 'ไม่สามารถเข้าถึงกล้องเว็บแคมได้', 'error'); }); };
+    const startVideo = () => { console.log("Starting video stream..."); navigator.mediaDevices.getUserMedia({ video: {} }).then(stream => { video.srcObject = stream; }).catch(err => { setStatus('! ไม่สามารถเปิดกล้อง', 'red'); Swal.fire('เกิดข้อผิดพลาด', 'ไม่สามารถเข้าถึงกล้องเว็บแคมได้', 'error'); }); };
 
     video.addEventListener('play', () => {
+        console.log("Video playback started. Setting up recognition interval.");
         const displaySize = { width: video.width, height: video.height };
         faceapi.matchDimensions(canvas, displaySize);
         if (checkInInterval) clearInterval(checkInInterval);
@@ -157,7 +183,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const results = resizedDetections.map(d => faceMatcher.findBestMatch(d.descriptor));
             results.forEach((result, i) => {
                 const box = resizedDetections[i].detection.box;
-                const student = studentsData.find(s => s.id === result.label);
+                const student = studentsData.find(s => String(s.id) === result.label);
                 if (student) {
                     new faceapi.draw.DrawBox(box, { label: student.name }).draw(canvas);
                     if (!checkedInToday.has(student.id)) handleSuccessfulScan(student);
@@ -180,27 +206,12 @@ document.addEventListener('DOMContentLoaded', () => {
         setTimeout(() => { isScanningPaused = false; setStatus('พร้อมสแกน', 'green'); }, 3000);
     }
 
+    // --- Student Management Functions (No changes) ---
     document.getElementById('manage-data-btn').addEventListener('click', async () => { await loadStudentsTable(); studentListModal.classList.remove('hidden'); });
     document.getElementById('close-list-modal-btn').addEventListener('click', () => studentListModal.classList.add('hidden'));
     document.getElementById('add-student-btn').addEventListener('click', () => openStudentModal());
     document.getElementById('cancel-btn').addEventListener('click', () => studentModal.classList.add('hidden'));
-
-    function openStudentModal(student = null, rowIndex = null) {
-        studentForm.reset();
-        document.getElementById('student-row-index').value = rowIndex !== null ? rowIndex : '';
-        if (student) {
-            document.getElementById('modal-title').innerText = 'แก้ไขข้อมูลนักเรียน';
-            document.getElementById('student-id').value = student.id;
-            document.getElementById('student-id').readOnly = true;
-            document.getElementById('student-name').value = student.name;
-            document.getElementById('student-class').value = student.class;
-        } else {
-            document.getElementById('modal-title').innerText = 'เพิ่มข้อมูลนักเรียน';
-            document.getElementById('student-id').readOnly = false;
-        }
-        studentModal.classList.remove('hidden');
-    }
-
+    function openStudentModal(student = null, rowIndex = null) { studentForm.reset(); document.getElementById('student-row-index').value = rowIndex !== null ? rowIndex : ''; if (student) { document.getElementById('modal-title').innerText = 'แก้ไขข้อมูลนักเรียน'; document.getElementById('student-id').value = student.id; document.getElementById('student-id').readOnly = true; document.getElementById('student-name').value = student.name; document.getElementById('student-class').value = student.class; } else { document.getElementById('modal-title').innerText = 'เพิ่มข้อมูลนักเรียน'; document.getElementById('student-id').readOnly = false; } studentModal.classList.remove('hidden'); }
     studentForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const student = {
@@ -212,7 +223,6 @@ document.addEventListener('DOMContentLoaded', () => {
         };
         const imageFile = document.getElementById('student-image').files[0];
         if (!student.rowIndex && !imageFile) { Swal.fire('ข้อผิดพลาด', 'กรุณาอัปโหลดรูปภาพสำหรับนักเรียนใหม่', 'error'); return; }
-
         showLoading('กำลังประมวลผลใบหน้า...');
         if (imageFile) {
             try {
@@ -220,25 +230,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 const detection = await faceapi.detectSingleFace(image).withFaceLandmarks().withFaceDescriptor();
                 if (!detection) { throw new Error('ไม่พบใบหน้าในรูปภาพ!'); }
                 student.faceEncoding = JSON.stringify(Array.from(detection.descriptor));
-            } catch(error) {
-                hideLoading();
-                Swal.fire('เกิดข้อผิดพลาด', error.message, 'error');
-                return;
-            }
+            } catch(error) { hideLoading(); Swal.fire('เกิดข้อผิดพลาด', error.message, 'error'); return; }
         }
-
         showLoading('กำลังบันทึกข้อมูล...');
         const action = student.rowIndex ? 'updateStudent' : 'addStudent';
         const result = await callGoogleScript(action, student);
-        if (result) {
-            studentModal.classList.add('hidden');
-            await loadStudentsAndBuildMatcher();
-            await loadStudentsTable();
-            Swal.fire('สำเร็จ', 'บันทึกข้อมูลเรียบร้อย', 'success');
-        }
+        if (result) { studentModal.classList.add('hidden'); await loadStudentsAndBuildMatcher(); await loadStudentsTable(); Swal.fire('สำเร็จ', 'บันทึกข้อมูลเรียบร้อย', 'success'); }
         hideLoading();
     });
-
     async function loadStudentsTable() {
         showLoading('กำลังโหลดตาราง...');
         const tableBody = document.getElementById('student-table-body');

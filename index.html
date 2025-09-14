@@ -41,7 +41,7 @@
     <div id="app-container" class="container mx-auto p-4 md:p-8 hidden">
         <header class="bg-white shadow-md rounded-lg p-6 mb-8">
             <div class="flex justify-between items-center">
-                <div><h1 class="text-3xl font-bold text-blue-600">ระบบเช็คชื่อด้วยการสแกนใบหน้า</h1><p class="text-gray-500">เวอร์ชัน: Face Encoding & Text-to-Speech</p></div>
+                <div><h1 class="text-3xl font-bold text-blue-600">ระบบเช็คชื่อด้วยการสแกนใบหน้า</h1><p class="text-gray-500">เวอร์ชัน: Final</p></div>
                 <div class="flex items-center space-x-4"><button id="manage-data-btn" class="bg-green-500 text-white px-4 py-2 rounded-md hover:bg-green-600">จัดการข้อมูลนักเรียน</button><button id="reset-config-btn" class="bg-yellow-500 text-white px-4 py-2 rounded-md hover:bg-yellow-600 text-sm">Reset URL</button></div>
             </div>
         </header>
@@ -110,16 +110,17 @@ document.addEventListener('DOMContentLoaded', () => {
     async function callGoogleScript(action, payload = {}) {
         try {
             const response = await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action, payload }) });
-            // NEW: Check if response is OK before parsing JSON
             if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                // Try to get more details from the response body if it's not JSON
+                const errorText = await response.text();
+                throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
             }
             const result = await response.json();
             if(result.status === 'error') throw new Error(result.message);
             return result.data;
         } catch (error) {
-            console.error('callGoogleScript Error:', error); // NEW: More detailed logging
-            Swal.fire('เกิดข้อผิดพลาด', `ไม่สามารถเชื่อมต่อ Google Sheet: ${error.message}. กรุณาตรวจสอบ Console (F12) สำหรับข้อมูลเพิ่มเติม`, 'error');
+            console.error('callGoogleScript Error:', error);
+            Swal.fire('เกิดข้อผิดพลาด', `ไม่สามารถเชื่อมต่อ Google Sheet: ${error.message}. กรุณาตรวจสอบ Console (F12) และตั้งค่าการ Deploy ของ Apps Script อีกครั้ง`, 'error');
             hideLoading();
             return null;
         }
@@ -132,8 +133,15 @@ document.addEventListener('DOMContentLoaded', () => {
         else { configModal.classList.add('hidden'); appContainer.classList.remove('hidden'); initializeApp(); }
     };
     document.getElementById('save-config-btn').addEventListener('click', () => {
-        const url = document.getElementById('web-app-url-input').value.trim();
-        if (url) { localStorage.setItem('webAppUrl', url); checkConfig(); }
+        const urlInput = document.getElementById('web-app-url-input');
+        const url = urlInput.value.trim();
+        if (url && url.startsWith("https://script.google.com/macros/s/")) { 
+            localStorage.setItem('webAppUrl', url); 
+            checkConfig(); 
+        } else {
+            Swal.fire('URL ไม่ถูกต้อง', 'กรุณาตรวจสอบให้แน่ใจว่า URL เริ่มต้นด้วย "https://script.google.com/macros/s/"', 'warning');
+            urlInput.focus();
+        }
     });
     document.getElementById('reset-config-btn').addEventListener('click', () => {
         localStorage.removeItem('webAppUrl'); location.reload();
@@ -159,7 +167,6 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log("Fetching student data from Google Sheet...");
         const data = await callGoogleScript('getStudents');
         
-        // NEW: Debugging log to show what was received from the sheet
         console.log("Data received from Google Sheet:", data);
         
         if (!data) {
@@ -167,10 +174,19 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         
+        if (data.length === 0) {
+            setStatus('! ไม่มีข้อมูลในชีต', 'red');
+            console.warn("Sheet contains no student data.");
+            return;
+        }
+        
         studentsData = data.map(row => ({ id: row[0], name: row[1], class: row[2], encoding: row[3] }));
         
         const labeledFaceDescriptors = studentsData.map(student => {
-            if (!student.encoding) return null;
+            if (!student.encoding || typeof student.encoding !== 'string' || !student.encoding.startsWith('[')) {
+                console.warn(`Skipping invalid encoding for student ID ${student.id}`);
+                return null;
+            }
             try {
                 const descriptor = new Float32Array(JSON.parse(student.encoding));
                 return new faceapi.LabeledFaceDescriptors(student.id, [descriptor]);
@@ -186,21 +202,15 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log(`Face Matcher created with ${labeledFaceDescriptors.length} entries.`);
         } else {
             faceMatcher = null;
-            setStatus('! ไม่พบข้อมูลใบหน้า', 'red');
-            console.warn("Face Matcher not created. No valid face encodings found.");
+            setStatus('! ไม่พบข้อมูลใบหน้าที่ถูกต้อง', 'red');
+            console.warn("Face Matcher not created. No valid face encodings found after parsing.");
+            Swal.fire('ไม่พบข้อมูลใบหน้า', 'ระบบไม่พบข้อมูลใบหน้าที่ถูกต้องใน Google Sheet กรุณาไปที่ "จัดการข้อมูล" และอัปโหลดรูปภาพนักเรียนใหม่อีกครั้ง', 'warning');
         }
         hideLoading();
     }
 
     // Real-time Face Recognition
-    const startVideo = () => {
-        navigator.mediaDevices.getUserMedia({ video: {} })
-            .then(stream => { video.srcObject = stream; })
-            .catch(err => {
-                setStatus('! ไม่สามารถเปิดกล้อง', 'red');
-                Swal.fire('เกิดข้อผิดพลาด', 'ไม่สามารถเข้าถึงกล้องเว็บแคมได้ กรุณาตรวจสอบการอนุญาต', 'error');
-            });
-    };
+    const startVideo = () => { navigator.mediaDevices.getUserMedia({ video: {} }).then(stream => { video.srcObject = stream; }).catch(err => { setStatus('! ไม่สามารถเปิดกล้อง', 'red'); Swal.fire('เกิดข้อผิดพลาด', 'ไม่สามารถเข้าถึงกล้องเว็บแคมได้ กรุณาตรวจสอบการอนุญาต', 'error'); }); };
     
     video.addEventListener('play', () => {
         const displaySize = { width: video.width, height: video.height };
@@ -209,39 +219,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
         checkInInterval = setInterval(async () => {
             if (!faceMatcher || isScanningPaused) return;
-
-            const detections = await faceapi.detectAllFaces(video, new faceapi.SsdMobilenetv1Options()).withFaceLandmarks().withFaceDescriptors();
+            const detections = await faceapi.detectAllFaces(video, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 })).withFaceLandmarks().withFaceDescriptors();
             const resizedDetections = faceapi.resizeResults(detections, displaySize);
             const context = canvas.getContext('2d');
             context.clearRect(0, 0, canvas.width, canvas.height);
-
             if (resizedDetections.length === 0) return;
-
             const results = resizedDetections.map(d => faceMatcher.findBestMatch(d.descriptor));
-            
             results.forEach((result, i) => {
                 const box = resizedDetections[i].detection.box;
-                if (result.label === 'unknown') {
-                    const drawBox = new faceapi.draw.DrawBox(box, { label: 'ไม่รู้จัก', boxColor: 'red' });
-                    drawBox.draw(canvas);
-                } else {
+                if (result.label === 'unknown') { new faceapi.draw.DrawBox(box, { label: 'ไม่รู้จัก', boxColor: 'red' }).draw(canvas); } 
+                else {
                     const student = studentsData.find(s => s.id === result.label);
-                    const label = `${student.name}`;
-                    const drawBox = new faceapi.draw.DrawBox(box, { label });
-                    drawBox.draw(canvas);
-                    if (!checkedInToday.has(result.label)) {
-                        handleSuccessfulScan(result.label, student.name);
-                    }
+                    if (!student) return;
+                    new faceapi.draw.DrawBox(box, { label: student.name }).draw(canvas);
+                    if (!checkedInToday.has(result.label)) { handleSuccessfulScan(result.label, student.name); }
                 }
             });
         }, 700);
     });
 
     async function handleSuccessfulScan(studentId, studentName) {
-        checkedInToday.add(studentId);
-        isScanningPaused = true;
-        setStatus(`พบ: ${studentName}`, 'blue');
-        speak(`สวัสดีค่ะ ${studentName}`);
+        checkedInToday.add(studentId); isScanningPaused = true;
+        setStatus(`พบ: ${studentName}`, 'blue'); speak(`สวัสดีค่ะ ${studentName}`);
         const logDiv = document.getElementById('scan-log');
         const timestamp = new Date().toLocaleTimeString('th-TH');
         const logEntry = document.createElement('div');

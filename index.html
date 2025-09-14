@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ระบบเช็คชื่อด้วยใบหน้า V2</title>
+    <title>ระบบเช็คชื่อด้วยใบหน้า V3 (สมบูรณ์)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
@@ -68,8 +68,13 @@
                  <div class="bg-white p-6 rounded-lg shadow-md">
                     <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
                          <h2 class="text-2xl font-bold">สรุปผลการเข้าเรียน</h2>
-                         <div class="flex items-center gap-2">
-                            <label for="dashboard-date" class="font-medium">เลือกวันที่:</label>
+                         <div class="flex items-center gap-4">
+                            <select id="period-filter" class="border rounded-md p-2">
+                                <option value="day">รายวัน</option>
+                                <option value="week">รายสัปดาห์</option>
+                                <option value="month">รายเดือน</option>
+                                <option value="year">รายปี</option>
+                            </select>
                             <input type="date" id="dashboard-date" class="border rounded-md p-2">
                          </div>
                     </div>
@@ -78,7 +83,7 @@
                     </div>
                      <div id="dashboard-placeholder" class="text-center py-16 hidden">
                         <svg xmlns="http://www.w3.org/2000/svg" class="mx-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
-                         <p id="dashboard-placeholder-text" class="text-gray-500 mt-4 text-lg">ไม่พบข้อมูลการเข้าเรียนในวันที่เลือก</p>
+                         <p id="dashboard-placeholder-text" class="text-gray-500 mt-4 text-lg">ไม่พบข้อมูลการเข้าเรียนในช่วงเวลาที่เลือก</p>
                     </div>
                  </div>
             </div>
@@ -115,6 +120,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const tabScan = document.getElementById('tab-scan');
     const tabDashboard = document.getElementById('tab-dashboard');
     const dashboardDateInput = document.getElementById('dashboard-date');
+    const periodFilter = document.getElementById('period-filter');
 
     // --- UTILITY FUNCTIONS ---
     const showLoading = (text = 'กำลังโหลด...') => { loadingText.innerText = text; loadingOverlay.classList.remove('hidden'); };
@@ -157,48 +163,71 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- DASHBOARD LOGIC ---
     dashboardDateInput.addEventListener('change', renderDashboard);
+    periodFilter.addEventListener('change', renderDashboard);
 
     function renderDashboard() {
         const selectedDate = new Date(dashboardDateInput.value);
-        const selectedDateString = selectedDate.toDateString();
-        const currentMonth = selectedDate.getMonth();
-        const currentYear = selectedDate.getFullYear();
-
+        const period = periodFilter.value;
         const grid = document.getElementById('dashboard-grid');
         const placeholder = document.getElementById('dashboard-placeholder');
         grid.innerHTML = '';
-        
-        // Filter for attendance on the selected day
-        const dailyAttendance = allAttendanceData.filter(att => new Date(att.timestamp).toDateString() === selectedDateString);
-        const uniqueDailyStudentIds = [...new Set(dailyAttendance.map(att => att.id))];
 
+        let periodLabel = '';
+        let dailyAttendance = [];
+        let periodCounts = {};
+
+        const allAttendanceWithDates = allAttendanceData.map(att => ({...att, date: new Date(att.timestamp)}));
+
+        if (period === 'day') {
+            periodLabel = 'วันนี้';
+            const selectedDateString = selectedDate.toDateString();
+            dailyAttendance = allAttendanceWithDates.filter(att => att.date.toDateString() === selectedDateString);
+        } else if (period === 'week') {
+            periodLabel = 'สัปดาห์นี้';
+            const startOfWeek = new Date(selectedDate);
+            startOfWeek.setDate(selectedDate.getDate() - selectedDate.getDay());
+            startOfWeek.setHours(0,0,0,0);
+            const endOfWeek = new Date(startOfWeek);
+            endOfWeek.setDate(startOfWeek.getDate() + 6);
+            endOfWeek.setHours(23,59,59,999);
+            dailyAttendance = allAttendanceWithDates.filter(att => att.date >= startOfWeek && att.date <= endOfWeek);
+        } else if (period === 'month') {
+            periodLabel = 'เดือนนี้';
+            const currentMonth = selectedDate.getMonth();
+            const currentYear = selectedDate.getFullYear();
+            dailyAttendance = allAttendanceWithDates.filter(att => att.date.getMonth() === currentMonth && att.date.getFullYear() === currentYear);
+        } else if (period === 'year') {
+            periodLabel = 'ปีนี้';
+            const currentYear = selectedDate.getFullYear();
+            dailyAttendance = allAttendanceWithDates.filter(att => att.date.getFullYear() === currentYear);
+        }
+        
+        periodCounts = dailyAttendance.reduce((acc, att) => {
+            acc[att.id] = (acc[att.id] || 0) + 1;
+            return acc;
+        }, {});
+        
+        const uniqueDailyStudentIds = [...new Set(dailyAttendance.map(att => att.id))];
+        
         if (uniqueDailyStudentIds.length === 0) {
             placeholder.classList.remove('hidden');
             return;
         }
         placeholder.classList.add('hidden');
         
-        // Calculate monthly attendance for all students
-        const monthlyCounts = {};
-        allAttendanceData.forEach(att => {
-            const attDate = new Date(att.timestamp);
-            if (attDate.getMonth() === currentMonth && attDate.getFullYear() === currentYear) {
-                monthlyCounts[att.id] = (monthlyCounts[att.id] || 0) + 1;
-            }
-        });
-
         uniqueDailyStudentIds.forEach(studentId => {
             const student = studentsData.find(s => String(s.id) === String(studentId));
             if (!student) return;
 
             const card = document.createElement('div');
             card.className = "bg-gray-50 rounded-lg p-4 text-center shadow transition hover:shadow-lg";
+            // **FIX:** Use student.imageData for the image source
             card.innerHTML = `
                 <img src="${student.imageData || 'https://placehold.co/150x150/e2e8f0/475569?text=No+Image'}" class="w-32 h-32 rounded-full object-cover mx-auto mb-4 border-4 border-white shadow-md">
                 <h3 class="font-bold text-lg">${student.name}</h3>
                 <p class="text-gray-500 text-sm mb-3">${student.class}</p>
                 <div class="bg-blue-100 text-blue-800 rounded-full px-3 py-1">
-                    มาเรียนเดือนนี้: <span class="font-bold">${monthlyCounts[student.id] || 0}</span> ครั้ง
+                    มาเรียน${periodLabel}: <span class="font-bold">${periodCounts[student.id] || 0}</span> ครั้ง
                 </div>
             `;
             grid.appendChild(card);
@@ -227,6 +256,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const [studentsResult, attendanceResult] = await Promise.all([studentsPromise, attendancePromise]);
 
         if (studentsResult) {
+            // **FIX:** Expect 5 columns now, including imageData
             studentsData = studentsResult.map(row => ({ id: row[0], name: row[1], class: row[2], faceEncoding: row[3], imageData: row[4] }));
             const labeledFaceDescriptors = studentsData.map(student => {
                 if (!student.faceEncoding || !student.faceEncoding.startsWith('[')) return null;
@@ -255,7 +285,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     // --- FACE RECOGNITION ---
-    video.addEventListener('play', () => { /* ... Face recognition logic remains the same ... */ 
+    video.addEventListener('play', () => { 
         const displaySize = { width: video.width, height: video.height };
         faceapi.matchDimensions(canvas, displaySize);
         if (checkInInterval) clearInterval(checkInInterval);
@@ -297,7 +327,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('close-list-modal-btn').addEventListener('click', () => document.getElementById('student-list-modal').classList.add('hidden'));
     document.getElementById('add-student-btn').addEventListener('click', () => openStudentModal());
     document.getElementById('cancel-btn').addEventListener('click', () => document.getElementById('student-modal').classList.add('hidden'));
-    function openStudentModal(student = null, rowIndex = null) { /* ... Modal logic ... */ 
+    function openStudentModal(student = null, rowIndex = null) { 
         const form = document.getElementById('student-form');
         form.reset();
         document.getElementById('student-row-index').value = rowIndex !== null ? rowIndex : '';
@@ -327,7 +357,7 @@ document.addEventListener('DOMContentLoaded', () => {
             name: document.getElementById('student-name').value,
             class: document.getElementById('student-class').value,
             faceEncoding: null,
-            imageData: null
+            imageData: null // To store thumbnail
         };
         
         if (imageFile) {
@@ -337,15 +367,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!detection) throw new Error('ไม่พบใบหน้าในรูปภาพ!');
                 student.faceEncoding = JSON.stringify(Array.from(detection.descriptor));
 
-                // Create a thumbnail for display
+                // **NEW:** Create a thumbnail for display
                 const canvasThumb = document.createElement('canvas');
                 const ctx = canvasThumb.getContext('2d');
-                const MAX_WIDTH = 200;
+                const MAX_WIDTH = 200; // Small thumbnail size
                 const scale = MAX_WIDTH / image.width;
                 canvasThumb.width = MAX_WIDTH;
                 canvasThumb.height = image.height * scale;
                 ctx.drawImage(image, 0, 0, canvasThumb.width, canvasThumb.height);
-                student.imageData = canvasThumb.toDataURL('image/jpeg', 0.8);
+                student.imageData = canvasThumb.toDataURL('image/jpeg', 0.8); // Compress as JPEG
 
             } catch(error) {
                 hideLoading();
@@ -358,19 +388,20 @@ document.addEventListener('DOMContentLoaded', () => {
         const result = await callGoogleScript(action, student);
         if (result) {
             document.getElementById('student-modal').classList.add('hidden');
-            await initializeApp(); // Reload all data
+            await initializeApp(); 
             await loadStudentsTable();
             Swal.fire('สำเร็จ', 'บันทึกข้อมูลเรียบร้อย', 'success');
         }
         hideLoading();
     });
 
-    async function loadStudentsTable() { /* ... Table loading logic ... */ 
+    async function loadStudentsTable() { 
         showLoading('กำลังโหลดตาราง...');
         const tableBody = document.getElementById('student-table-body');
         tableBody.innerHTML = '<tr><td colspan="4" class="text-center p-4">กำลังโหลด...</td></tr>';
         const data = await callGoogleScript('getStudents');
         if (data) {
+            // Data now has 5 columns, but we only need 3 for this table
             const tableStudents = data.map(row => ({ id: row[0], name: row[1], class: row[2] }));
             tableBody.innerHTML = '';
             tableStudents.forEach((student, index) => {
@@ -385,7 +416,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (result.isConfirmed) {
                         showLoading('กำลังลบ...');
                         await callGoogleScript('deleteStudent', { rowIndex: e.target.dataset.rowindex });
-                        await initializeApp(); // Reload all data
+                        await initializeApp();
                         await loadStudentsTable();
                         hideLoading();
                     }

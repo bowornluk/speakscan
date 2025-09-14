@@ -386,7 +386,7 @@ document.addEventListener('DOMContentLoaded', () => {
     async function handleSuccessfulScan(student) {
         checkedInToday.add(student.id);
         isScanningPaused = true;
-        speak(`สวัสดีค่ะ ${student.name}`);
+        speak(`สวัสดีค่ะ ${student.name}บันทึกแล้วค่ะ`);
         document.getElementById('scan-log').innerHTML = `<div class="p-2 mb-2 bg-green-100 text-green-800 rounded-md font-semibold">[${new Date().toLocaleTimeString('th-TH')}] เช็คชื่อสำเร็จ: ${student.name}</div>` + document.getElementById('scan-log').innerHTML;
         const newRecord = { id: student.id, name: student.name, timestamp: new Date().toISOString() };
         allAttendanceData.push(newRecord);
